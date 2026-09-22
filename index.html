@@ -21,7 +21,7 @@ main{padding:12px;max-width:1500px;width:100%;margin:auto;overflow:hidden}
 .sides{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}.sides.single-side{grid-template-columns:1fr}
 .side{min-width:0}.side h3{font-size:13px;text-align:center;margin:5px 0 7px;color:var(--muted)}
 .shelf{border:1px solid #9eaab5;border-radius:8px;overflow:hidden;margin-bottom:9px;background:#fafbfc}
-.shelf-title{font-size:9px;padding:3px;color:#000;font-weight:700}
+.shelf-title{padding:5px 7px;background:#f0f3f6;font-weight:700;text-align:center;font-size:13px}
 .cells{display:grid;grid-template-columns:repeat(5,32px);gap:5px;padding:6px;justify-content:center}
 .cell{width:32px;height:30px;min-height:30px;border:1px solid #b9c2ca;border-radius:6px;background:var(--empty);font-size:11px;padding:0;cursor:pointer;text-align:center}
 .cell:hover{outline:2px solid var(--accent);outline-offset:1px;z-index:1}.cell.filled{background:var(--filled);font-weight:700}
@@ -43,6 +43,7 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
 @media(min-width:1100px){
  main{padding:14px 18px}.map{grid-template-columns:minmax(125px,1fr) repeat(4,minmax(235px,2fr));gap:8px}
  .street{padding:7px}.street h2{font-size:15px;padding:6px}.sides{gap:6px}.side h3{font-size:9px}
+ .shelf-title{font-size:9px;padding:3px}.cells{grid-template-columns:repeat(5,22px);gap:3px;padding:5px}
  .cell{width:22px;min-width:22px;height:23px;min-height:23px;font-size:9px}
 }
 @media(max-width:1099px){.map{grid-template-columns:1fr}.street{width:100%}.sides{gap:8px}.cells{grid-template-columns:repeat(5,30px);gap:5px}.cell{width:30px;min-width:30px;height:29px;min-height:29px;font-size:10px}.side h3{font-size:10px}.shelf-title{font-size:10px}}
@@ -173,19 +174,29 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
 <script src="https://cdn.jsdelivr.net/npm/firebase@9.23.0/firebase-database-compat.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/firebase@9.23.0/firebase-auth-compat.js"></script>
 <script>
+// Import the functions you need from the SDKs you need
+import { initializeApp } from "firebase/app";
+import { getAnalytics } from "firebase/analytics";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
+
+// Your web app's Firebase configuration
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
-    apiKey: "AIzaSyAFd_IPlACJlpxeGsNE7Iq3dQm-VYu5Ba4",
-    authDomain: "warehouse-map-b6ed6.firebaseapp.com",
-    databaseURL: "https://warehouse-map-b6ed6-default-rtdb.europe-west1.firebasedatabase.app",
-    projectId: "warehouse-map-b6ed6",
-    storageBucket: "warehouse-map-b6ed6.firebasestorage.app",
-    messagingSenderId: "196261680344",
-    appId: "1:196261680344:web:fdd54671cf57690744f3ad",
-    measurementId: "G-7GZFEYSDSJ"
+  apiKey: "AIzaSyAFd_IPlACJlpxeGsNE7Iq3dQm-VYu5Ba4",
+  authDomain: "warehouse-map-b6ed6.firebaseapp.com",
+  databaseURL: "https://warehouse-map-b6ed6-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "warehouse-map-b6ed6",
+  storageBucket: "warehouse-map-b6ed6.firebasestorage.app",
+  messagingSenderId: "196261680344",
+  appId: "1:196261680344:web:fdd54671cf57690744f3ad",
+  measurementId: "G-7GZFEYSDSJ"
 };
 
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
 firebase.initializeApp(firebaseConfig);
-
 
 const auth = firebase.auth();
 const provider = new firebase.auth.GoogleAuthProvider();
