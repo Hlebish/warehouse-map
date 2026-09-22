@@ -48,9 +48,89 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
 }
 @media(max-width:1099px){.map{grid-template-columns:1fr}.street{width:100%}.sides{gap:8px}.cells{grid-template-columns:repeat(5,30px);gap:5px}.cell{width:30px;min-width:30px;height:29px;min-height:29px;font-size:10px}.side h3{font-size:10px}.shelf-title{font-size:10px}}
 @media(max-width:520px){main{padding:8px}.map{gap:8px}.street{padding:6px}.sides{gap:5px}.cells{grid-template-columns:repeat(5,27px);gap:4px;padding:5px}.cell{width:27px;min-width:27px;height:27px;min-height:27px}.special-storage{grid-template-columns:1fr;gap:8px;padding:0 8px}.special-cell{min-height:52px}}
+#loginScreen{
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,.92);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  z-index:99999;
+}
+
+#loginBox{
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:14px;
+  padding:30px;
+  width:360px;
+  max-width:90%;
+  text-align:center;
+  box-shadow:0 10px 40px #000;
+}
+
+#loginBox h2{
+  margin-top:0;
+}
+
+#loginBox p{
+  color:var(--muted);
+  margin-bottom:20px;
+}
 </style>
 </head>
 <body>
+ <body>
+
+<div id="loginScreen" style="
+  position:fixed;
+  inset:0;
+  z-index:9999;
+  background:#121212;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  text-align:center;
+  font-family:Arial,sans-serif;
+">
+  <div style="
+    background:#1e1e1e;
+    padding:30px;
+    border-radius:16px;
+    box-shadow:0 10px 40px rgba(0,0,0,.5);
+    max-width:360px;
+    width:calc(100% - 40px);
+  ">
+    <h2 style="margin-top:0;color:#fff;">🔐 Доступ к складу</h2>
+
+    <p style="color:#aaa;margin-bottom:25px;">
+      Войдите через Google, чтобы открыть карту склада.
+    </p>
+
+    <button onclick="loginWithGoogle()" style="
+      width:100%;
+      padding:12px 18px;
+      border:0;
+      border-radius:10px;
+      background:#fff;
+      color:#222;
+      font-size:15px;
+      font-weight:600;
+      cursor:pointer;
+    ">
+      Войти через Google
+    </button>
+
+    <div id="loginError" style="
+      color:#ff6b6b;
+      margin-top:15px;
+      font-size:13px;
+      display:none;
+    "></div>
+  </div>
+</div>
+
+<header>
 <header>
 <h1>📦 Интерактивная карта склада</h1>
 <div class="sub">Адрес: улица (S1–S5) → полка (A–E слева / F–K справа)</div>
@@ -90,8 +170,9 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
 <div class="actions"><button onclick="closeModal()">Отмена</button><button class="primary" onclick="saveCell()">Сохранить</button></div>
 </div></div>
 
-<script src="https://www.gstatic.com/firebasejs/12.9.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/12.9.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/7.12.9/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/7.12.9/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/7.12.9/firebase-auth-compat.js"></script>
 <script>
 const firebaseConfig={
  apiKey:"AIzaSyAydF_id_IPLACJplxeGsNE7Iq3dQm-VYu5Ba4",
@@ -104,8 +185,31 @@ const firebaseConfig={
  measurementId:"G-7GZFEYSDSJ"
 };
 firebase.initializeApp(firebaseConfig);
+
+const auth = firebase.auth();
+const provider = new firebase.auth.GoogleAuthProvider();
+
 const db=firebase.database();
+ 
 const rootRef=db.ref("warehouse");
+ function loginWithGoogle(){
+  auth.signInWithPopup(provider)
+    .catch(error => {
+      const el = document.getElementById("loginError");
+      el.textContent = "Ошибка входа: " + error.message;
+      el.style.display = "block";
+    });
+}
+
+auth.onAuthStateChanged(user => {
+  const loginScreen = document.getElementById("loginScreen");
+
+  if (user) {
+    loginScreen.style.display = "none";
+  } else {
+    loginScreen.style.display = "flex";
+  }
+});
 
 const letters=["A","B","C","D","E","F","G","H","J","K"];
 const leftLetters=["A","B","C","D","E"];
