@@ -174,29 +174,19 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
 <script src="https://cdn.jsdelivr.net/npm/firebase@9.23.0/firebase-database-compat.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/firebase@9.23.0/firebase-auth-compat.js"></script>
 <script>
-// Import the functions you need from the SDKs you need
-import { initializeApp } from "firebase/app";
-import { getAnalytics } from "firebase/analytics";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
-
-// Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
-  apiKey: "AIzaSyAFd_IPlACJlpxeGsNE7Iq3dQm-VYu5Ba4",
-  authDomain: "warehouse-map-b6ed6.firebaseapp.com",
-  databaseURL: "https://warehouse-map-b6ed6-default-rtdb.europe-west1.firebasedatabase.app",
-  projectId: "warehouse-map-b6ed6",
-  storageBucket: "warehouse-map-b6ed6.firebasestorage.app",
-  messagingSenderId: "196261680344",
-  appId: "1:196261680344:web:fdd54671cf57690744f3ad",
-  measurementId: "G-7GZFEYSDSJ"
+    apiKey: "AIzaSyAFd_IPlACJlpxeGsNE7Iq3dQm-VYu5Ba4",
+    authDomain: "warehouse-map-b6ed6.firebaseapp.com",
+    databaseURL: "https://warehouse-map-b6ed6-default-rtdb.europe-west1.firebasedatabase.app",
+    projectId: "warehouse-map-b6ed6",
+    storageBucket: "warehouse-map-b6ed6.firebasestorage.app",
+    messagingSenderId: "196261680344",
+    appId: "1:196261680344:web:fdd54671cf57690744f3ad",
+    measurementId: "G-7GZFEYSDSJ"
 };
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
 firebase.initializeApp(firebaseConfig);
+
 
 const auth = firebase.auth();
 const provider = new firebase.auth.GoogleAuthProvider();
