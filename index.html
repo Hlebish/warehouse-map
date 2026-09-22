@@ -175,7 +175,7 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
 <script src="https://cdn.jsdelivr.net/npm/firebase@9.23.0/firebase-auth-compat.js"></script>
 <script>
 const firebaseConfig = {
-    apiKey: "ТВОЙ_API_KEY",
+    apiKey: "AIzaSyAFd_IPlACJlpxeGsNE7Iq3dQm-VYu5Ba4",
     authDomain: "warehouse-map-b6ed6.firebaseapp.com",
     databaseURL: "https://warehouse-map-b6ed6-default-rtdb.europe-west1.firebasedatabase.app",
     projectId: "warehouse-map-b6ed6",
@@ -187,10 +187,6 @@ const firebaseConfig = {
 
 firebase.initializeApp(firebaseConfig);
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
-firebase.initializeApp(firebaseConfig);
 
 const auth = firebase.auth();
 const provider = new firebase.auth.GoogleAuthProvider();
