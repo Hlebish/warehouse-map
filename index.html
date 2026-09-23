@@ -311,7 +311,7 @@ function openMoveModal(){
   if(!current)return;
 
   const value=String(data[current.s][current.l][current.n]||"").trim();
-  const lines=value.split(/\\r?\\n/).map(x=>x.trim()).filter(Boolean);
+  const lines=value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
   const select=document.getElementById("moveItem");
   const error=document.getElementById("moveError");
   error.style.display="none";
@@ -345,7 +345,7 @@ async function moveSelectedDetail(){
   if(!current)return;
 
   const value=String(data[current.s][current.l][current.n]||"").trim();
-  const lines=value.split(/\\r?\\n/).map(x=>x.trim()).filter(Boolean);
+  const lines=value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
   const index=Number(document.getElementById("moveItem").value);
   const destinationRaw=document.getElementById("moveDestination").value.trim();
   const error=document.getElementById("moveError");
