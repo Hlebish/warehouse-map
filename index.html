@@ -320,100 +320,16 @@ async function clearAll(){
  catch(e){setSync("⚠️ Ошибка синхронизации","err");console.error(e)}
 }
 function doSearch(){
-  const q=document.getElementById("search").value.trim().toLowerCase();
-  const out=document.getElementById("results");
-
-  if(!q){
-    out.innerHTML="";
-    return;
+ const q=document.getElementById("search").value.trim().toLowerCase(),out=document.getElementById("results");
+ if(!q){out.innerHTML="";return}
+ const found=[];
+ for(let s=1;s<=5;s++){
+  const ls=s===1?leftLetters:letters;
+  for(const l of ls)for(let n=1;n<=10;n++){
+   const v=data["S"+s][l][String(n)]||"",a=address("S"+s,l,n);
+   if(a.toLowerCase().includes(q)||v.toLowerCase().includes(q))found.push({a,v,s:"S"+s,l,n:String(n)});
   }
-
-  const found=[];
-
-  for(let s=1;s<=5;s++){
-    const ls=s===1?leftLetters:letters;
-
-    for(const l of ls){
-      for(let n=1;n<=10;n++){
-
-        const v=data["S"+s][l][String(n)]||"";
-        const a=address("S"+s,l,n);
-
-        if(
-          a.toLowerCase().includes(q) ||
-          v.toLowerCase().includes(q)
-        ){
-          found.push({
-            a,
-            v,
-            s:"S"+s,
-            l,
-            n:String(n)
-          });
-        }
-      }
-    }
-  }
-
-  for(const type of ["resale","defect"]){
-    const v=specialData[type]||"";
-    const a=type==="resale"?"Перекупной товар":"Брак";
-
-    if(
-      a.toLowerCase().includes(q) ||
-      v.toLowerCase().includes(q)
-    ){
-      found.push({
-        a,
-        v,
-        special:type
-      });
-    }
-  }
-
-  if(!found.length){
-    out.innerHTML=`<div class="result">Ничего не найдено.</div>`;
-    return;
-  }
-
-  out.innerHTML=
-    `<div style="font-weight:700;margin:8px 0">
-      Найдено: ${found.length}
-    </div>`+
-
-    found.map(x=>{
-
-      if(x.special){
-        return `
-          <div class="result"
-               onclick="openSpecial('${x.special}')">
-            <strong>${x.a}</strong>
-            ${x.v ? `<div style="font-size:12px;margin-top:3px;color:#555">
-              ${esc(x.v)}
-            </div>` : ""}
-          </div>
-        `;
-      }
-
-      return `
-        <div class="result"
-             onclick="openModal('${x.s}','${x.l}','${x.n}')">
-
-          <strong>${x.a}</strong>
-
-          <div style="
-            font-size:13px;
-            margin-top:4px;
-            color:#333;
-            font-weight:600;
-          ">
-            ${esc(x.v || "пусто")}
-          </div>
-
-        </div>
-      `;
-    }).join("");
-}
+ }
  for(const type of ["resale","defect"]){
   const v=specialData[type]||"",a=type==="resale"?"Перекупной товар":"Брак";
   if(a.toLowerCase().includes(q)||v.toLowerCase().includes(q))found.push({a,v,special:type});
