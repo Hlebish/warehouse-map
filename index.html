@@ -349,15 +349,11 @@ function fixKeyboardLayout(value){
 }
 
 function searchTokens(value){
-  const raw=normalizeSearchText(value);
-  const tokens=raw.split(/\s+/).filter(Boolean);
-  return [...new Set([
-    ...tokens,
-    ...tokens.map(translitToLatin),
-    ...tokens.map(fixKeyboardLayout).map(normalizeSearchText)
-  ])];
+  return normalizeSearchText(value)
+    .split(/\s+/)
+    .filter(Boolean);
 }
-
+  
 const searchAliases={
   "капот":["капот","hood","bonnet"],
   "крыло":["крыло","wing"],
