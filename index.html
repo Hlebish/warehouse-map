@@ -347,6 +347,7 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
   to{transform:scale(1.25);opacity:1}
 }
 </style>
+<style>/* Excel import UI */.excel-modal{position:fixed;inset:0;background:rgba(0,0,0,.58);display:none;align-items:center;justify-content:center;padding:16px;z-index:10050}.excel-dialog{background:#fff;border-radius:16px;width:min(620px,100%);max-height:88vh;overflow:auto;box-shadow:0 18px 60px #0007;padding:20px;color:var(--ink)}.excel-head{display:flex;align-items:flex-start;gap:12px;margin-bottom:16px}.excel-icon{width:42px;height:42px;flex:0 0 42px;border-radius:11px;background:#eaf2ff;color:#1f6feb;display:flex;align-items:center;justify-content:center;font-size:21px}.excel-head h2{margin:0 0 4px;font-size:20px}.excel-file{font-size:12px;color:var(--muted);overflow-wrap:anywhere}.excel-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0}.excel-stat{background:#f6f8fa;border:1px solid #e0e5ea;border-radius:10px;padding:11px}.excel-stat b{display:block;font-size:18px;margin-bottom:2px}.excel-stat span{font-size:11px;color:var(--muted)}.excel-section{margin-top:14px}.excel-section-title{font-size:13px;font-weight:700;margin-bottom:7px}.excel-preview{background:#f7f9fb;border:1px solid #dce3e9;border-radius:10px;padding:9px;max-height:150px;overflow:auto;font-size:12px}.excel-preview-row{padding:7px 4px;border-bottom:1px solid #e3e8ed}.excel-preview-row:last-child{border-bottom:0}.excel-preview-row strong{color:#1264d8;margin-right:7px}.excel-warn{background:#fff8e7;border:1px solid #f2d38a;color:#805b00;border-radius:10px;padding:10px;font-size:12px}.excel-error{background:#fff0f0;border:1px solid #f2b8b8;color:#9b1c1c;border-radius:10px;padding:11px;font-size:13px}.excel-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}.excel-actions button{min-width:105px}.excel-primary{background:var(--accent)!important;color:#fff!important;border-color:var(--accent)!important}.excel-success-icon{background:#eaf8ed;color:#2e7d46}.excel-error-icon{background:#fff0f0;color:#b42318}.excel-close{margin-left:auto;border:0;background:transparent;font-size:24px;line-height:1;color:#66717d;padding:0 4px}.excel-close:hover{background:#f1f3f5}@media(max-width:520px){.excel-dialog{padding:16px}.excel-stats{grid-template-columns:1fr 1fr}.excel-stat:last-child{grid-column:1/-1}.excel-actions{flex-direction:column-reverse}.excel-actions button{width:100%}}</style>
 </head>
 <body>
 
@@ -398,6 +399,7 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
   </div>
 </div>
 
+<div id="excelModal" class="excel-modal" aria-hidden="true"><div class="excel-dialog" role="dialog" aria-modal="true"><div class="excel-head"><div id="excelModalIcon" class="excel-icon">📥</div><div style="min-width:0;flex:1"><h2 id="excelModalTitle">Импорт Excel</h2><div id="excelModalFile" class="excel-file"></div></div><button class="excel-close" type="button" onclick="closeExcelModal()">×</button></div><div id="excelModalBody"></div><div id="excelModalActions" class="excel-actions"></div></div></div>
 <header>
 <h1>📦 Интерактивная карта склада</h1>
 <div class="sub">Адрес: улица (S1–S5) → полка (A–E слева / F–K справа)</div>
@@ -1754,11 +1756,19 @@ function findExcelColumns(row,columnMap){
   };
 }
 
+let excelModalCloseHandler=null;
+function showExcelModal(cfg){const m=document.getElementById("excelModal");document.getElementById("excelModalTitle").textContent=cfg.title||"Импорт Excel";document.getElementById("excelModalFile").textContent=cfg.fileName||"";document.getElementById("excelModalBody").innerHTML=cfg.body||"";document.getElementById("excelModalIcon").textContent=cfg.icon||"📥";document.getElementById("excelModalIcon").className="excel-icon "+(cfg.iconClass||"");document.getElementById("excelModalActions").innerHTML=(cfg.actions||[]).map((a,i)=>`<button type="button" class="${a.className||""}" data-excel-action="${i}">${a.label}</button>`).join("");excelModalCloseHandler=cfg.onClose||null;m.style.display="flex";m.setAttribute("aria-hidden","false");(cfg.actions||[]).forEach((a,i)=>m.querySelector(`[data-excel-action="${i}"]`)?.addEventListener("click",a.onClick));}
+function hideExcelModal(){const m=document.getElementById("excelModal");if(m){m.style.display="none";m.setAttribute("aria-hidden","true")}}
+function closeExcelModal(){const handler=excelModalCloseHandler;excelModalCloseHandler=null;hideExcelModal();if(handler)handler()}
+function excelEsc(v){return String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]))}
+function showExcelMessage(cfg){return new Promise(resolve=>showExcelModal({...cfg,onClose:()=>resolve(),actions:[{label:"Понятно",className:"excel-primary",onClick:()=>{hideExcelModal();excelModalCloseHandler=null;resolve()}}]}))}
+function askExcelImport(o){return new Promise(resolve=>{const ph=o.preview.slice(0,5).map(x=>`<div class="excel-preview-row"><strong>${excelEsc(x.address)}</strong>${excelEsc(x.value)}</div>`).join("");const sh=o.skipped.length?`<div class="excel-section"><div class="excel-section-title">⚠️ Пропущенные строки</div><div class="excel-warn">${o.skipped.slice(0,5).map(x=>`Строка ${excelEsc(x.row)} — ${excelEsc(x.reason)}`).join("<br>")}${o.skipped.length>5?`<br>…и ещё ${o.skipped.length-5}.`:""}</div></div>`:`<div class="excel-section"><div class="excel-warn" style="background:#edf9f0;border-color:#b8dfc0;color:#2e6b3b">✓ Все строки с адресами обработаны.</div></div>`;showExcelModal({title:"Проверка импорта",fileName:`📄 ${o.fileName}`,onClose:()=>resolve(false),body:`<div class="excel-stats"><div class="excel-stat"><b>${o.rowCount}</b><span>строк с данными</span></div><div class="excel-stat"><b>${o.addressCount}</b><span>ячеек</span></div><div class="excel-stat"><b>${o.locationCount}</b><span>записей</span></div></div><div class="excel-section"><div class="excel-section-title">Предпросмотр</div><div class="excel-preview">${ph}${o.addressCount>5?`<div style="padding:7px 4px;color:#66717d">…и ещё ${o.addressCount-5} ячеек</div>`:""}</div></div>${sh}<div style="margin-top:14px;font-size:13px;color:#52606d">Загрузить эти данные на карту?</div>`,actions:[{label:"Отмена",onClick:()=>{hideExcelModal();excelModalCloseHandler=null;resolve(false)}},{label:"Загрузить",className:"excel-primary",onClick:()=>{hideExcelModal();excelModalCloseHandler=null;resolve(true)}}]})})}
+
 async function importExcelFile(file){
   if(!file)return;
 
   if(typeof XLSX==="undefined"){
-    alert("Не удалось загрузить модуль Excel. Обнови страницу и попробуй ещё раз.");
+    await showExcelMessage({title:"Модуль Excel не загружен",icon:"⚠️",iconClass:"excel-error-icon",body:`<div class="excel-error">Не удалось загрузить модуль Excel. Обнови страницу и попробуй ещё раз.</div>`});
     return;
   }
 
@@ -1769,7 +1779,7 @@ async function importExcelFile(file){
     const rows=XLSX.utils.sheet_to_json(sheet,{header:1,defval:"",raw:false});
 
     if(!rows.length){
-      alert("Excel пустой.");
+      await showExcelMessage({title:"Excel пустой",icon:"⚠️",iconClass:"excel-error-icon",body:`<div class="excel-error">В выбранном файле нет данных для импорта.</div>`});
       return;
     }
 
@@ -1802,8 +1812,8 @@ async function importExcelFile(file){
         const sample=sampleRows
           .map(r=>String(r?.[c]??"").toUpperCase())
           .join(" ");
-        if(/\\bS[1-5]\\s*[,\-]\s*[A-K]\\s*[-,]?\\s*\\d{1,2}/i.test(sample) ||
-           /\\bS[1-5]\\b/i.test(sample)){
+        if(/\bS[1-5]\s*[,-]\s*[A-K]\s*[-,]?\s*\d{1,2}/i.test(sample) ||
+           /\bS[1-5]\b/i.test(sample)){
           columnMap.location=c;
           break;
         }
@@ -1884,43 +1894,13 @@ async function importExcelFile(file){
     const addresses=Object.keys(imported);
 
     if(!addresses.length){
-      alert(
-        `Excel прочитан, но конкретных ячеек не найдено.\\n\\n`+
-        `Строк с данными: ${rowCount}\\n`+
-        `Пример ожидаемого адреса: S5, A3 или S4, F6,F7,F8.`
-      );
+      await showExcelMessage({title:"Ячейки не найдены",icon:"⚠️",iconClass:"excel-error-icon",body:`<div class="excel-error">Excel прочитан, но конкретных ячеек не найдено.<br><br>Пример ожидаемого адреса: <strong>S5, A3</strong> или <strong>S4, F6,F7,F8</strong>.</div>`});
       return;
     }
 
-    const preview=addresses.slice(0,10).map(addr=>{
-      return `${addr}\\n${imported[addr].join("\\n")}`;
-    }).join("\\n\\n");
+    const preview=addresses.slice(0,10).map(addr=>({address:addr,value:imported[addr].join(" · ")}));
 
-    const more=addresses.length>10
-      ? `\\n\\n…и ещё ${addresses.length-10} ячеек.`
-      : "";
-
-    const skippedPreview=skipped.slice(0,5).map(x=>{
-      return `строка ${x.row}: ${x.reason}`;
-    }).join("\\n");
-
-    const skippedMore=skipped.length>5
-      ? `\\n…и ещё ${skipped.length-5}.`
-      : "";
-
-    const ok=confirm(
-      `Excel: ${file.name}\\n\\n`+
-      `Строк с данными: ${rowCount}\\n`+
-      `Ячеек для заполнения: ${addresses.length}\\n`+
-      `Записей: ${locationCount}\\n`+
-      `Пропущено строк: ${skipped.length}\\n\\n`+
-      `Пример:\\n${preview}${more}`+
-      (skipped.length
-        ? `\\n\\nПропущенные строки:\\n${skippedPreview}${skippedMore}`
-        : "")+
-      `\\n\\nЗагрузить эти данные на карту?`
-    );
-
+    const ok=await askExcelImport({fileName:file.name,rowCount,addressCount:addresses.length,locationCount,preview,skipped});
     if(!ok)return;
 
     // Формируем только те ячейки, которые пришли из Excel.
@@ -1951,7 +1931,7 @@ async function importExcelFile(file){
     }
 
     if(!validAddresses.length){
-      alert("Excel распознан, но ни одного адреса карты не удалось подготовить к записи.");
+      await showExcelMessage({title:"Импорт не выполнен",icon:"⚠️",iconClass:"excel-error-icon",body:`<div class="excel-error">Excel был распознан, но ни одного адреса карты не удалось подготовить к записи.</div>`});
       return;
     }
 
@@ -2005,14 +1985,7 @@ async function importExcelFile(file){
         await openHistory();
       }
 
-      alert(
-        `Готово!\\n\\n`+
-        `Загружено ячеек: ${validAddresses.length}\\n`+
-        `Записей: ${locationCount}\\n`+
-        (skipped.length
-          ? `Пропущено строк: ${skipped.length}`
-          : "Все строки с адресами обработаны.")
-      );
+      await showExcelMessage({title:"Импорт завершён",icon:"✓",iconClass:"excel-success-icon",fileName:`📄 ${file.name}`,body:`<div class="excel-stats"><div class="excel-stat"><b>${validAddresses.length}</b><span>загружено ячеек</span></div><div class="excel-stat"><b>${locationCount}</b><span>записей</span></div><div class="excel-stat"><b>${skipped.length}</b><span>пропущено строк</span></div></div><div class="excel-warn" style="background:${skipped.length?"#fff8e7":"#edf9f0"};border-color:${skipped.length?"#f2d38a":"#b8dfc0"};color:${skipped.length?"#805b00":"#2e6b3b"}">${skipped.length?`⚠️ Импорт выполнен, но ${skipped.length} строк не были загружены.`:"✓ Все строки с адресами обработаны."}</div>`});
 
     }catch(e){
       console.error("Excel import Firebase error:",e);
@@ -2022,11 +1995,7 @@ async function importExcelFile(file){
         "err"
       );
 
-      alert(
-        `Excel распознан, но Firebase не разрешил записать данные.\\n\\n`+
-        `Ошибка: ${e?.code||e?.message||e}\\n\\n`+
-        `Если здесь написано PERMISSION_DENIED — проверь права записи для твоего Google-аккаунта.`
-      );
+      await showExcelMessage({title:"Не удалось сохранить Excel",icon:"⚠️",iconClass:"excel-error-icon",body:`<div class="excel-error"><strong>Firebase не разрешил записать данные.</strong><br><br>Код ошибки: <strong>${excelEsc(e?.code||"Firebase")}</strong>${e?.code==="PERMISSION_DENIED"?`<br><br>Проверь права записи для своего Google-аккаунта.`:""}</div>`});
 
       return;
     }
@@ -2038,9 +2007,48 @@ async function importExcelFile(file){
 
   }catch(err){
     console.error(err);
-    alert("Ошибка чтения Excel: "+(err?.message||err));
+    await showExcelMessage({title:"Ошибка чтения Excel",icon:"⚠️",iconClass:"excel-error-icon",body:`<div class="excel-error">Не удалось прочитать файл Excel.<br><br><small>${excelEsc(err?.message||err)}</small></div>`});
   }
 }
+
+
+/* Global popup controls: ESC on PC + Android/browser Back on phones. */
+(function setupGlobalPopupClose(){
+  const popupIds=["excelModal","historyModal","modal","moveModal","specialModal"];
+  const isVisible=id=>{
+    const el=document.getElementById(id);
+    if(!el)return false;
+    const cs=getComputedStyle(el);
+    return cs.display!=="none" && cs.visibility!=="hidden" && cs.opacity!=="0";
+  };
+  const closeTopPopup=()=>{
+    if(isVisible("excelModal")){ closeExcelModal(); return true; }
+    if(isVisible("specialModal")){ closeSpecial(); return true; }
+    if(isVisible("moveModal")){ closeMoveModal(); return true; }
+    if(isVisible("modal")){ closeModal(); return true; }
+    if(isVisible("historyModal")){ closeHistory(); return true; }
+    return false;
+  };
+
+  // Keep one history guard entry so the phone/browser Back button closes a popup first.
+  let guardActive=true;
+  try{ history.pushState({warehousePopupGuard:true},"",location.href); }
+  catch(e){ guardActive=false; }
+
+  document.addEventListener("keydown",e=>{
+    if(e.key!=="Escape")return;
+    if(closeTopPopup()){
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  },true);
+
+  window.addEventListener("popstate",()=>{
+    if(closeTopPopup() && guardActive){
+      try{ history.pushState({warehousePopupGuard:true},"",location.href); }catch(e){}
+    }
+  });
+})();
 
 document.getElementById("excelFile").addEventListener("change",async e=>{
   const file=e.target.files?.[0];
