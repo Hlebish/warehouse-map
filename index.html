@@ -531,51 +531,136 @@ function addCodeMeaning(text){
   return result;
 }
 
-function searchScore(queryTokens,text){
-  // Добавляем к артикулу смысловые слова из его кода:
-  // APMZ1606 -> Mazda + мазда + MZ + бампер.
-  const enriched=addCodeMeaning(text);
-  const normalized=normalizeSearchText(enriched);
+const partTypeAliases={
+  "капот":["капот","hood","bonnet"],
+  "крыло":["крыло","wing","левое крыло","правое крыло"],
+  "левое крыло":["левое крыло","крыло","left wing"],
+  "правое крыло":["правое крыло","крыло","right wing"],
+  "бампер":["бампер","bumper","передний бампер","front bumper","задний бампер","rear bumper"],
+  "передний бампер":["бампер","передний бампер","front bumper"],
+  "задний бампер":["бампер","задний бампер","rear bumper"],
+  "дверь":["дверь","двери","door"],
+  "фара":["фара","headlight"],
+  "фонарь":["фонарь","фонар","tail light","taillight"],
+  "решетка":["решетка","решётка","grille"]
+};
+
+const partCodeTypes={
+  "1":["левое крыло","крыло","left wing"],
+  "2":["правое крыло","крыло","right wing"],
+  "3":["капот","hood","bonnet"],
+  "6":["бампер","передний бампер","bumper","front bumper"],
+  "7":["бампер","задний бампер","rear bumper","bumper"]
+};
+
+function queryTokenMatchesText(token,text){
+  const normalized=normalizeSearchText(text);
   const textTokens=normalized.split(/\s+/).filter(Boolean);
   const compact=normalized.replace(/\s+/g,"");
+
+  for(const variant of expandSearchToken(token)){
+    if(!variant)continue;
+    if(compact.includes(variant))return true;
+
+    for(const word of textTokens){
+      if(word.startsWith(variant))return true;
+
+      if(variant.length>=3 && word.length>=3){
+        const distance=levenshtein(variant,word);
+        const maxDistance=variant.length<=4?1:variant.length<=7?2:3;
+        if(distance<=maxDistance)return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+function tokenIsPartType(token){
+  const base=normalizeSearchText(token);
+  for(const [name,aliases] of Object.entries(partTypeAliases)){
+    if([name,...aliases].some(x=>normalizeSearchText(x)===base))return name;
+  }
+  return null;
+}
+
+function tokenIsBrand(token){
+  const base=normalizeSearchText(token);
+
+  for(const [brand,aliases] of Object.entries(searchAliases)){
+    if([brand,...aliases].some(x=>normalizeSearchText(x)===base)){
+      return brand;
+    }
+  }
+
+  return null;
+}
+
+function codePartTypes(value){
+  const result=new Set();
+  const matches=String(value||"").toUpperCase().match(/\bAP[A-Z]{2}\d+\b/g)||[];
+
+  for(const code of matches){
+    const last=code.slice(-1);
+    (partCodeTypes[last]||[]).forEach(x=>result.add(normalizeSearchText(x)));
+  }
+
+  return result;
+}
+
+function brandMatchesValue(brand,value){
+  const text=normalizeSearchText(value);
+  const variants=expandSearchToken(brand);
+
+  if(variants.some(v=>v && text.replace(/\s+/g,"").includes(v.replace(/\s+/g,"")))){
+    return true;
+  }
+
+  // Артикул склада: AP + код марки, например APMZ1606.
+  const brandAliases=(searchAliases[brand]||[brand]).map(normalizeSearchText);
+  return brandAliases.some(alias=>{
+    const compact=alias.replace(/\s+/g,"");
+    return compact.length<=4 && new RegExp("AP"+compact+"\\d+","i").test(String(value||""));
+  });
+}
+
+function partMatchesValue(part,value){
+  const types=codePartTypes(value);
+
+  if(types.size){
+    const aliases=partTypeAliases[part]||[part];
+    return aliases.some(x=>types.has(normalizeSearchText(x)));
+  }
+
+  const aliases=partTypeAliases[part]||[part];
+  return aliases.some(x=>queryTokenMatchesText(x,value));
+}
+
+function searchScore(queryTokens,text){
   let score=0;
 
   for(const rawToken of queryTokens){
-    const variants=expandSearchToken(rawToken);
-    let best=0;
+    const brand=tokenIsBrand(rawToken);
+    const part=tokenIsPartType(rawToken);
 
-    for(const token of variants){
-      if(!token)continue;
-
-      if(compact.includes(token)){
-        best=Math.max(best,100);
-        continue;
-      }
-
-      for(const word of textTokens){
-        if(word.startsWith(token)){
-          best=Math.max(best,90);
-        }else if(token.length>=3 && word.length>=3){
-          const distance=levenshtein(token,word);
-          const maxDistance=token.length<=4?1:token.length<=7?2:3;
-
-          if(distance<=maxDistance){
-            best=Math.max(best,70-distance*10);
-          }
-        }
-      }
+    if(brand){
+      if(brandMatchesValue(brand,text)) score+=120;
+      else if(!queryTokenMatchesText(rawToken,text)) return 0;
+      continue;
     }
 
-    // КАЖДОЕ слово запроса обязательно должно найтись.
-    // Поэтому "Mazda бампер" не покажет просто Mazda-крылья.
-    if(best===0)return 0;
+    if(part){
+      if(partMatchesValue(part,text)) score+=120;
+      else return 0;
+      continue;
+    }
 
-    score+=best;
+    if(queryTokenMatchesText(rawToken,text)) score+=80;
+    else return 0;
   }
 
   return score;
 }
-
 function doSearch(){
   const raw=document.getElementById("search").value.trim();
   const out=document.getElementById("results");
