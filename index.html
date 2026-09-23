@@ -99,7 +99,7 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
   border:1px solid var(--border);
   border-radius:14px;
   padding:10px;
-  margin:10px 0 14px;
+  margin:14px auto 14px;
   box-shadow:0 2px 7px #0000000b;
 }
 .mini-map-title{
@@ -114,7 +114,7 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
 .warehouse-plan{
   position:relative;
   width:100%;
-  max-width:1280px;
+  max-width:1050px;
   aspect-ratio:1280 / 853;
   margin:0 auto;
   overflow:hidden;
@@ -144,7 +144,8 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
   position:absolute;
   left:50%;
   transform:translateX(-50%);
-  width:110px;
+  width:54px;
+  height:34px;
   border:none;
   background:transparent;
   border-radius:50%;
@@ -152,27 +153,40 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
   display:flex;
   align-items:center;
   justify-content:center;
-  pointer-events:none;
+  pointer-events:auto;
+  cursor:pointer;
+  z-index:5;
 }
 .plan-aisle-label{
   color:#fff;
+  width:44px;
+  height:30px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  box-sizing:border-box;
   background:radial-gradient(circle,
-    rgba(255,214,65,.92) 0%,
-    rgba(255,214,65,.58) 28%,
-    rgba(255,214,65,.20) 52%,
-    rgba(255,214,65,0) 76%);
+    rgba(255,214,65,.82) 0%,
+    rgba(255,214,65,.48) 32%,
+    rgba(255,214,65,.16) 62%,
+    rgba(255,214,65,0) 82%);
   border:none;
   border-radius:50%;
-  padding:18px 28px;
-  min-width:62px;
+  padding:0;
   text-align:center;
-  font:800 30px/1 Arial,sans-serif;
+  font:800 19px/1 Arial,sans-serif;
   white-space:nowrap;
   text-shadow:
-    0 1px 2px rgba(0,0,0,.55),
-    0 0 8px rgba(255,224,90,.95);
-  filter:drop-shadow(0 0 7px rgba(255,214,65,.75));
+    0 1px 2px rgba(0,0,0,.7),
+    0 0 5px rgba(255,224,90,.9);
+  filter:drop-shadow(0 0 4px rgba(255,214,65,.65));
+  transition:transform .12s ease, filter .12s ease;
 }
+.plan-aisle-highlight:hover .plan-aisle-label{
+  transform:scale(1.15);
+  filter:drop-shadow(0 0 7px rgba(255,214,65,.95));
+}
+
 
 
 .plan-badge .plan-side-arrow{
@@ -199,6 +213,35 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
   .mini-map-title{align-items:flex-start;flex-direction:column}
   .plan-badge{font-size:9px;padding:2px 4px;border-width:1.5px}
   .plan-badge .plan-side-arrow{font-size:8px}
+  /* МОБИЛЬНЫЙ РЕЖИМ: маленькая точка строго в центре прохода */
+  .plan-aisle-highlight{
+    width:20px !important;
+    height:16px !important;
+    left:50%;
+    transform:translateX(-50%);
+    overflow:visible;
+  }
+  .plan-aisle-label{
+    width:18px !important;
+    height:14px !important;
+    min-width:18px;
+    max-width:18px;
+    font-size:8px !important;
+    line-height:1 !important;
+    font-weight:800;
+    padding:0;
+    border-radius:50%;
+    background:radial-gradient(circle,
+      rgba(255,214,65,.72) 0%,
+      rgba(255,214,65,.28) 45%,
+      rgba(255,214,65,0) 75%) !important;
+    text-shadow:0 1px 2px rgba(0,0,0,.9);
+    filter:drop-shadow(0 0 2px rgba(255,214,65,.55));
+  }
+  .plan-aisle-highlight:hover .plan-aisle-label,
+  .plan-aisle-highlight:active .plan-aisle-label{
+    transform:none !important;
+  }
 }
 @media(max-width:1099px){
  .mini-map{grid-template-columns:repeat(2,minmax(150px,1fr))}
@@ -275,6 +318,8 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
 <span>Нажми на ячейку — откроется карточка хранения.</span>
 <span id="syncStatus" class="sync warn">☁️ Подключение к Firebase…</span>
 </div>
+
+<div id="results"></div>
 <div id="miniMapWrap" class="mini-map-wrap">
   <div class="mini-map-title">
     <strong>🗺️ Планировка склада</strong>
@@ -285,7 +330,6 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
     <div id="planMarkers"></div>
   </div>
 </div>
-<div id="results"></div>
 <div id="stats" class="stats"></div>
 <div id="map" class="map"></div>
 </main>
@@ -553,8 +597,11 @@ function renderHistory(){
       body=`<div>${esc(x.detail||"Изменено содержимое")}</div>
             ${x.address?`<div>Ячейка: <strong>${esc(x.address)}</strong></div>`:""}`;
     }else if(x.type==="import"){
-      body=`<div class="history-add">Excel: ${esc(x.detail||x.fileName||"файл")}</div>
-            <div>Ячеек: <strong>${Number(x.cellsCount||0)}</strong> · записей: <strong>${Number(x.itemsCount||0)}</strong></div>`;
+      body=`<div class="history-add">📥 ${esc(x.fileName||x.detail||"Excel")}</div>
+            <div>Импортировано ячеек: <strong>${Number(x.cellsCount||0)}</strong> · записей: <strong>${Number(x.itemsCount||0)}</strong></div>
+            ${Array.isArray(x.addresses)&&x.addresses.length
+              ? `<div>Примеры адресов: ${esc(x.addresses.slice(0,12).join(", "))}${x.addresses.length>12?" …":""}</div>`
+              : ""}`;
     }else if(x.type==="clear"){
       body=`<div class="history-remove">Очищены обычные ячейки склада</div>
             <div>Удалено ячеек: <strong>${Number(x.cellsCount||450)}</strong></div>`;
@@ -725,14 +772,39 @@ async function moveSelectedDetail(){
     return;
   }
 
-  const parsed=parseExcelLocations(destinationRaw);
+  // Разрешаем ввод как полного адреса S4-F-7,
+  // так и просто номера полки F7 — тогда используется та же улица,
+  // на которой сейчас находится деталь.
+  let parsed=parseExcelLocations(destinationRaw);
+
+  if(parsed.length===0){
+    const shortMatch=destinationRaw.toUpperCase().replace(/\s+/g,"").match(/^([A-EFGHJK])[-–—]?(\d{1,2})$/);
+    if(shortMatch){
+      const letter=shortMatch[1];
+      const num=Number(shortMatch[2]);
+
+      if(num>=1 && num<=10 &&
+         !(current.s==="S1" && !leftLetters.includes(letter)) &&
+         (current.s!=="S1" || leftLetters.includes(letter))){
+        parsed=[`S${String(current.s).replace("S","")}-${letter}-${num}`];
+      }
+    }
+  }
+
   if(parsed.length!==1){
-    error.textContent="Укажи одну конкретную ячейку, например S4-F-7.";
+    error.textContent="Укажи одну конкретную ячейку: например F7 или S4-F-7.";
     error.style.display="block";
     return;
   }
 
-  const dest=parsed[0];
+  const destParts=String(parsed[0]).match(/^S([1-5])-([A-K])-([0-9]{1,2})$/);
+  if(!destParts){
+    error.textContent="Неверный адрес ячейки.";
+    error.style.display="block";
+    return;
+  }
+
+  const dest={s:`S${destParts[1]}`,l:destParts[2],n:Number(destParts[3])};
   const sourceAddress=address(current.s,current.l,current.n);
   const destAddress=address(dest.s,dest.l,dest.n);
 
@@ -782,9 +854,12 @@ async function moveSelectedDetail(){
     alert("Готово!\n\n"+detail+"\n\n"+sourceAddress+" → "+destAddress);
   }catch(e){
     console.error("Ошибка перемещения:",e);
-    error.textContent="Не удалось сохранить перемещение в Firebase.";
+    const code=e?.code||"";
+    error.textContent=code==="PERMISSION_DENIED"
+      ? "Firebase запретил перемещение. Проверь права владельца."
+      : `Не удалось переместить деталь: ${e?.message||"ошибка Firebase"}`;
     error.style.display="block";
-    setSync("⚠️ Ошибка синхронизации","err");
+    setSync("⚠️ Ошибка перемещения","err");
   }
 }
 
@@ -1671,6 +1746,22 @@ async function importExcelFile(file){
       // Если Firebase отклонит запись, данные на карте не меняем.
       await rootRef.child("cells").update(patch);
 
+      // После успешной записи сразу фиксируем сам факт импорта в истории.
+      // Делаем это ДО записи itemMeta, чтобы импорт не потерялся из-за
+      // отдельной операции с метаданными.
+      const importHistorySaved = await writeHistory({
+        type:"import",
+        detail:`Импорт Excel: ${file.name}`,
+        fileName:file.name,
+        cellsCount:validAddresses.length,
+        itemsCount:locationCount,
+        addresses:validAddresses.slice(0,200)
+      });
+
+      if(!importHistorySaved){
+        console.warn("Импорт записан в склад, но запись истории не подтверждена.");
+      }
+
       // После успешной записи обновляем локальное состояние.
       for(const addr of validAddresses){
         const match=addr.match(/^S([1-5])-([A-K])-(\d+)$/);
@@ -1686,11 +1777,15 @@ async function importExcelFile(file){
 
       setLocal();
       await rootRef.child("itemMeta").set(itemMeta);
-      await writeHistory({type:"import",detail:file.name,cellsCount:validAddresses.length,itemsCount:locationCount});
       render();
       doSearch();
 
-      setSync(`☁️ Excel загружен: ${validAddresses.length} ячеек`,"ok");
+      setSync(`☁️ Excel загружен: ${validAddresses.length} ячеек · история записана`,"ok");
+
+      // Если окно истории уже открыто — сразу обновляем его.
+      if(document.getElementById("historyModal")?.style.display==="flex"){
+        await openHistory();
+      }
 
       alert(
         `Готово!\\n\\n`+
@@ -1825,6 +1920,8 @@ function renderMiniMap(found=[]){
     marker.className="plan-marker";
     marker.style.left=p.left+"%";
     marker.style.top=p.top+"%";
+    // Каждый индикатор имеет собственную небольшую область нажатия.
+    marker.style.zIndex=10 + Number(g.n);
 
     const highlight=document.createElement("div");
     highlight.className="plan-aisle-highlight";
@@ -1835,7 +1932,12 @@ function renderMiniMap(found=[]){
 
     highlight.title=`S${g.s}-${g.l}-${g.n}`;
     highlight.style.pointerEvents="auto";
-    highlight.onclick=()=>openPlanCell(`S${g.s}`,g.l,String(g.n));
+    highlight.setAttribute("role","button");
+    highlight.setAttribute("aria-label",`Ячейка S${g.s}-${g.l}-${g.n}`);
+    highlight.onclick=(event)=>{
+      event.stopPropagation();
+      openPlanCell(`S${g.s}`,g.l,String(g.n));
+    };
 
     highlight.appendChild(label);
     marker.appendChild(highlight);
