@@ -823,32 +823,6 @@ function partMatchesValue(part,value){
   return aliases.some(x=>queryTokenMatchesText(x,value));
 }
 
-function searchScore(queryTokens,text){
-  let score=0;
-
-  for(const rawToken of queryTokens){
-    const brand=tokenIsBrand(rawToken);
-    const part=tokenIsPartType(rawToken);
-
-    if(brand){
-      if(brandMatchesValue(brand,text)) score+=120;
-      else if(!queryTokenMatchesText(rawToken,text)) return 0;
-      continue;
-    }
-
-    if(part){
-      if(partMatchesValue(part,text)) score+=120;
-      else return 0;
-      continue;
-    }
-
-    if(queryTokenMatchesText(rawToken,text)) score+=80;
-    else return 0;
-  }
-
-  return score;
-}
-
 function parseExcelLocations(value){
   const result=[];
   const text=String(value||"").toUpperCase();
@@ -1140,46 +1114,115 @@ document.getElementById("excelFile").addEventListener("change",async e=>{
 });
 
 function normalizeForSearch(value){
- return String(value||"").toLowerCase().replace(/ё/g,"е").trim();
+  return String(value||"")
+    .toLowerCase()
+    .replace(/ё/g,"е")
+    .replace(/й/g,"и")
+    .trim();
 }
 
 function fuzzyTokenMatch(query,text){
- const q=normalizeForSearch(query).replace(/[^a-zа-я0-9]/g,"");
- const t=normalizeForSearch(text);
- const words=t.split(/[^a-zа-я0-9]+/).filter(Boolean);
- if(!q)return true;
- if(words.some(w=>w.includes(q)||q.includes(w)))return true;
- if(q.length>=3){
-  return words.some(w=>{
-   const d=levenshtein(q,w);
-   const max=q.length<=4?1:q.length<=7?2:3;
-   return d<=max;
+  const q=normalizeForSearch(query).replace(/[^a-zа-я0-9]/g,"");
+  const t=normalizeForSearch(text);
+  const words=t.split(/[^a-zа-я0-9]+/).filter(Boolean);
+  if(!q)return true;
+
+  // Сначала строгое совпадение/вхождение.
+  if(words.some(w=>w.includes(q)||q.includes(w)))return true;
+
+  // Затем небольшие опечатки. Для коротких слов порог специально маленький,
+  // чтобы «капот» не начинал совпадать с «бампер».
+  if(q.length>=4){
+    return words.some(w=>{
+      const d=levenshtein(q,w);
+      const max=q.length<=5?1:q.length<=8?2:3;
+      return d<=max;
+    });
+  }
+  return false;
+}
+
+function explicitPartTypes(text){
+  const t=normalizeForSearch(text);
+  const found=new Set();
+
+  // Важное правило: если в содержимом ячейки прямо написано «капот»,
+  // «бампер» и т.п., используем именно эту надпись, а не предполагаемый
+  // тип по последней цифре артикула.
+  if(/\bкапот\b|\bhood\b|\bbonnet\b/.test(t))found.add("капот");
+  if(/\bбампер\b|\bbumper\b|\bfront bumper\b|\brear bumper\b/.test(t))found.add("бампер");
+  if(/\bкрыло\b|\bwing\b/.test(t))found.add("крыло");
+  if(/\bдверь\b|\bдвери\b|\bdoor\b/.test(t))found.add("дверь");
+  if(/\bфара\b|\bheadlight\b/.test(t))found.add("фара");
+  if(/\bфонарь\b|\bфонар\b|\btail light\b|\btaillight\b/.test(t))found.add("фонарь");
+  if(/\bрешетка\b|\bрешётка\b|\bgrille\b/.test(t))found.add("решетка");
+
+  return found;
+}
+
+function directPartMatch(part,text){
+  const aliases=partTypeAliases[part]||[part];
+  return aliases.some(alias=>fuzzyTokenMatch(alias,text));
+}
+
+function searchPartMatch(part,text){
+  // 1. Если тип детали явно написан в ячейке — доверяем именно надписи.
+  const explicit=explicitPartTypes(text);
+  if(explicit.size)return explicit.has(part);
+
+  // 2. Если явной надписи нет, можно использовать код артикула как запасной
+  //    источник информации о типе.
+  const types=codePartTypes(text);
+  if(types.size){
+    const aliases=partTypeAliases[part]||[part];
+    return aliases.some(x=>types.has(normalizeSearchText(x)));
+  }
+
+  // 3. И наконец обычный поиск по всему содержимому ячейки.
+  return directPartMatch(part,text);
+}
+
+function searchBrandMatch(brand,text){
+  // Сначала ищем марку непосредственно во всей информации ячейки:
+  // описание, артикул, дополнительные строки и адрес.
+  if(expandSearchToken(brand).some(v=>v && fuzzyTokenMatch(v,text)))return true;
+
+  // Запасной вариант для складского артикула AP + код марки.
+  const brandAliases=(searchAliases[brand]||[brand]).map(normalizeSearchText);
+  const raw=String(text||"").toUpperCase();
+  return brandAliases.some(alias=>{
+    const compact=alias.replace(/\s+/g,"");
+    return compact.length<=4 && new RegExp("AP"+compact+"\\d+","i").test(raw);
   });
- }
- return false;
 }
 
 function searchScore(queryTokens,text){
- let score=0;
- for(const token of queryTokens){
-  const variants=expandSearchToken(token);
-  let matched=false;
+  if(!queryTokens.length)return 0;
+  let score=0;
 
-  for(const variant of variants){
-   if(!variant)continue;
-   if(fuzzyTokenMatch(variant,text)){matched=true;score+=100;break;}
+  // Все слова запроса работают как AND:
+  // «Mazda капот» = Mazda И капот должны относиться к одной ячейке.
+  for(const rawToken of queryTokens){
+    const brand=tokenIsBrand(rawToken);
+    const part=tokenIsPartType(rawToken);
+
+    if(part){
+      if(!searchPartMatch(part,text))return 0;
+      score+=150;
+      continue;
+    }
+
+    if(brand){
+      if(!searchBrandMatch(brand,text))return 0;
+      score+=140;
+      continue;
+    }
+
+    if(!queryTokenMatchesText(rawToken,text))return 0;
+    score+=80;
   }
 
-  // Если это известный тип детали, ищем его напрямую в описании,
-  // а не требуем, чтобы он был закодирован в артикуле.
-  const part=tokenIsPartType(token);
-  if(!matched && part){
-   if(partMatchesValue(part,text)){matched=true;score+=110;}
-  }
-
-  if(!matched)return 0;
- }
- return score;
+  return score;
 }
 
 function formatSearchPreview(value){
