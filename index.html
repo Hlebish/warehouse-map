@@ -379,9 +379,10 @@ function doSearch(){
  out.innerHTML=found.length
  ? `<div style="font-weight:700;margin:8px 0">Найдено: ${found.length}</div>`+found.map(x=>x.special
  ? `<div class="result" onclick="openSpecial('${x.special}')"><strong>${x.a}</strong> — ${esc(x.v||"пусто")}</div>`
- : `<div class="result" onclick="openModal('${x.s}','${x.l}','${x.n}')"><strong>${x.a}</strong> — ${esc(x.v||"пусто")}</div>`).join("")
- : `<div class="result">Ничего не найдено.</div>`;
-}
+ : `<div class="result" onclick="openModal('${x.s}','${x.l}','${x.n}')">
+<strong>${x.a}</strong>
+<span class="article">${esc(x.v||"пусто")}</span>
+</div>`
 document.getElementById("search").addEventListener("input",()=>{render();doSearch()});
  const searchInput=document.getElementById("search");
 const searchSuggestions=document.getElementById("searchSuggestions");
