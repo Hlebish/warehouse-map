@@ -598,20 +598,21 @@ function normalizeData(d){
  }
  return out;
 }
-function itemKey(addr,line){
-  // Firebase Realtime Database forbids . # $ / [ ] inside object keys.
-  // Keep normal keys unchanged, but safely encode only forbidden characters
-  // so Excel descriptions like "LE/XLE" or "отв. тум." can be imported.
-  const safeLine=String(line||"").trim().replace(/[.#$\/\[\]]/g,ch=>({
+function safeFirebaseKey(value){
+  // Firebase Realtime Database forbids . # $ / [ ] in object keys.
+  // Encode them only for the technical key; visible Excel text is never changed.
+  return String(value??"").replace(/[.#$\/\[\]]/g,ch=>({
     ".":"%2E","#":"%23","$":"%24","/":"%2F","[":"%5B","]":"%5D"
   })[ch]);
-  return addr+"|"+safeLine;
+}
+function itemKey(addr,line){
+  return safeFirebaseKey(addr+"|"+String(line||"").trim());
 }
 function normalizeMeta(m){
  const out={};
  if(m && typeof m==="object"){
    for(const [k,v] of Object.entries(m)){
-     if(v && typeof v==="object") out[k]={addedAt:v.addedAt||null,updatedAt:v.updatedAt||null};
+     if(v && typeof v==="object") out[safeFirebaseKey(k)]={addedAt:v.addedAt||null,updatedAt:v.updatedAt||null};
    }
  }
  return out;
