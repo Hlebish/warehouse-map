@@ -1,3 +1,4 @@
+```
 <!doctype html>
 <html lang="ru">
 <head>
@@ -747,12 +748,63 @@ function renderHistory(){
   }).join("");
 }
 
+let __modalHistoryDepth=0;
+let __closingModalFromHistory=false;
+
+function __openModalHistory(id){
+  history.pushState({warehouseModal:id},"");
+  __modalHistoryDepth++;
+}
+
+function __closeModalHistory(){
+  if(__modalHistoryDepth>0){
+    __modalHistoryDepth--;
+    __closingModalFromHistory=true;
+    history.back();
+  }
+}
+
+function __closeTopModalFromHistory(){
+  if(document.getElementById("moveModal")?.style.display==="flex"){
+    closeMoveModal(true);
+    return;
+  }
+  if(document.getElementById("specialModal")?.style.display==="flex"){
+    closeSpecial(true);
+    return;
+  }
+  if(document.getElementById("historyModal")?.style.display==="flex"){
+    closeHistory(true);
+    return;
+  }
+  if(document.getElementById("modal")?.style.display==="flex"){
+    closeModal(true);
+  }
+}
+
+window.addEventListener("keydown",e=>{
+  if(e.key!=="Escape")return;
+  __closeTopModalFromHistory();
+});
+
+window.addEventListener("popstate",()=>{
+  if(__closingModalFromHistory){
+    __closingModalFromHistory=false;
+    return;
+  }
+  if(__modalHistoryDepth>0){
+    __modalHistoryDepth--;
+    __closeTopModalFromHistory();
+  }
+});
+
 async function openHistory(){
   const modal=document.getElementById("historyModal");
   const list=document.getElementById("historyList");
   if(!modal||!list)return;
 
   modal.style.display="flex";
+  __openModalHistory("historyModal");
   list.innerHTML="Загрузка истории…";
 
   try{
@@ -773,9 +825,10 @@ async function openHistory(){
   }
 }
 
-function closeHistory(){
+function closeHistory(fromHistory=false){
   const modal=document.getElementById("historyModal");
   if(modal)modal.style.display="none";
+  if(!fromHistory)__closeModalHistory();
 }
 
 function initHistoryUi(){
@@ -977,10 +1030,12 @@ function openMoveModal(){
   };
 
   document.getElementById("moveModal").style.display="flex";
+  __openModalHistory("moveModal");
 }
 
-function closeMoveModal(){
+function closeMoveModal(fromHistory=false){
   document.getElementById("moveModal").style.display="none";
+  if(!fromHistory)__closeModalHistory();
 }
 
 async function moveSelectedDetail(){
@@ -2341,3 +2396,4 @@ render();renderSpecial();renderMiniMap([]);initHistoryUi();setAccessUi();
 </script>
 </body>
 </html>
+```
