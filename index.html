@@ -235,13 +235,62 @@ const rootRef=db.ref("warehouse");
     });
 }
 
+async function loadWarehouseData(){
+  try{
+    setSync("☁️ Загрузка склада…","warn");
+    const snap=await rootRef.once("value");
+    const remote=snap.val()||{};
+
+    // Поддерживаем текущую структуру Firebase: warehouse/cells + warehouse/special.
+    // Для совместимости также принимаем старый вариант, где S1...S5 лежат прямо в warehouse.
+    const remoteCells=remote.cells || (remote.S1 ? remote : null);
+    if(remoteCells){
+      data=normalizeData(remoteCells);
+    }else{
+      const local=JSON.parse(localStorage.getItem("warehouseMapData")||"null");
+      data=normalizeData(local);
+    }
+
+    if(remote.special){
+      specialData={
+        resale:String(remote.special.resale||""),
+        defect:String(remote.special.defect||"")
+      };
+    }else{
+      const localSpecial=JSON.parse(localStorage.getItem("warehouseSpecialData")||"null");
+      specialData={
+        resale:String(localSpecial?.resale||""),
+        defect:String(localSpecial?.defect||"")
+      };
+    }
+
+    remoteLoaded=true;
+    setLocal();
+    render();
+    doSearch();
+    setSync("☁️ Синхронизировано","ok");
+  }catch(e){
+    console.error("Ошибка загрузки Firebase:",e);
+    remoteLoaded=false;
+    const local=JSON.parse(localStorage.getItem("warehouseMapData")||"null");
+    const localSpecial=JSON.parse(localStorage.getItem("warehouseSpecialData")||"null");
+    data=normalizeData(local);
+    specialData={resale:String(localSpecial?.resale||""),defect:String(localSpecial?.defect||"")};
+    render();
+    doSearch();
+    setSync("⚠️ Firebase недоступен — показана локальная копия","err");
+  }
+}
+
 auth.onAuthStateChanged(user => {
   const loginScreen = document.getElementById("loginScreen");
 
   if (user) {
     loginScreen.style.display = "none";
+    loadWarehouseData();
   } else {
     loginScreen.style.display = "flex";
+    setSync("🔐 Требуется вход","warn");
   }
 });
 
