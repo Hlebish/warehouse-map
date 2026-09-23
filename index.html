@@ -367,6 +367,7 @@ const searchAliases={
   "фара":["фара","headlight"],
   "фонарь":["фонарь","фонар","tail light","taillight"],
   "решетка":["решетка","решётка","grille"],
+
   "мазда":["мазда","mazda","mz"],
   "хонда":["хонда","honda","hd"],
   "тойота":["тойота","toyota","ty"],
@@ -376,7 +377,60 @@ const searchAliases={
   "бмв":["бмв","bmw"],
   "фольксваген":["фольксваген","volkswagen","vw"],
   "шевроле":["шевроле","chevrolet","chevy"],
-  "мерседес":["мерседес","mercedes","mb"]
+  "мерседес":["мерседес","mercedes","mb"],
+
+  "лексус":["лексус","lexus","lx"],
+  "инфинити":["инфинити","infiniti","inf"],
+  "акура":["акура","acura","ac"],
+  "субару":["субару","subaru","su"],
+  "митсубиси":["митсубиси","mitsubishi","mits"],
+  "сузуки":["сузуки","suzuki","sz"],
+  "исузу":["исузу","isuzu","iz"],
+  "дайхатсу":["дайхатсу","daihatsu","dh"],
+  "киа":["киа","kia","ki"],
+  "хендай":["хендай","hyundai","hy"],
+  "генезис":["генезис","genesis","gn"],
+  "дэу":["дэу","daewoo","dw"],
+  "ренo":["рено","renault","ren"],
+  "пежо":["пежо","peugeot","pg"],
+  "ситроен":["ситроен","citroen","citroën","ct"],
+  "фиат":["фиат","fiat","ft"],
+  "альфа ромео":["альфа ромео","alfa romeo","alfa","ar"],
+  "вольво":["вольво","volvo","vo"],
+  "сааб":["сааб","saab","sa"],
+  "ягуар":["ягуар","jaguar","jg"],
+  "ланд ровер":["ланд ровер","land rover","lr"],
+  "ровер":["ровер","rover","rv"],
+  "джип":["джип","jeep","jp"],
+  "додж":["додж","dodge","dg"],
+  "крайслер":["крайслер","chrysler","ch"],
+  "крайслер":["крайслер","chrysler","ch"],
+  "кадиллак":["кадиллак","cadillac","cad"],
+  "линкольн":["линкольн","lincoln","ln"],
+  "бьюик":["бьюик","buick","bk"],
+  "понтиак":["понтиак","pontiac","pt"],
+  "саат":["саат","seat","st"],
+  "шкода":["шкода","skoda","sk"],
+  "опель":["опель","opel","op"],
+  "порше":["порше","porsche","pr"],
+  "бентли":["бентли","bentley","be"],
+  "масерати":["масерати","maserati","ma"],
+  "ламборгини":["ламборгини","lamborghini","lm"],
+  "феррари":["феррари","ferrari","fr"],
+  "тесла":["тесла","tesla","ts"],
+  "рoлс рoйс":["роллс ройс","rolls royce","rr"],
+  "мини":["мини","mini"],
+  "мг":["мг","mg"],
+  "дженерал моторс":["дженерал моторс","general motors","gm"],
+
+  "лада":["лада","лада","lada","ваз","vaz"],
+  "ваз":["ваз","vaz","лада","lada"],
+  "газ":["газ","gaz"],
+  "уаз":["уаз","uaz"],
+  "москвич":["москвич","moskvich"],
+  "зил":["зил","zil"],
+  "камаз":["камаз","kamaz"],
+  "луаз":["луаз","luaz"]
 };
 
 function levenshtein(a,b){
@@ -403,12 +457,21 @@ function levenshtein(a,b){
 
 function expandSearchToken(token){
   const base=normalizeSearchText(token);
-  const result=new Set([base,translitToLatin(base),normalizeSearchText(fixKeyboardLayout(base))]);
+  const result=new Set([
+    base,
+    translitToLatin(base),
+    normalizeSearchText(fixKeyboardLayout(base))
+  ]);
 
+  // Ищем совпадение в обе стороны:
+  // "мазда" -> Mazda -> MZ
+  // "Mazda" -> мазда -> MZ
+  // "MZ" -> Mazda -> мазда
   for(const [key,aliases] of Object.entries(searchAliases)){
     const all=[key,...aliases].map(normalizeSearchText);
+
     if(all.includes(base)){
-      aliases.forEach(x=>result.add(normalizeSearchText(x)));
+      all.forEach(x=>result.add(x));
     }
   }
 
