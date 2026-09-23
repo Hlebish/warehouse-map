@@ -53,6 +53,18 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
 .result strong{display:block;color:#1264d8;font-size:14px}
 .result .article{display:block;margin-top:5px;color:#222;font-size:13px;font-weight:700}
  .result:hover{border-color:var(--accent)}
+
+.search-head{margin:10px 0 7px;padding:9px 11px;background:#fff;border:1px solid var(--border);border-radius:10px;color:#25313d}
+.search-result{position:relative;display:grid;grid-template-columns:105px minmax(0,1fr) auto;gap:10px;align-items:start;padding:10px 12px;margin:7px 0;background:#fff;border:2px solid #ef4444;border-radius:10px;cursor:pointer;box-shadow:0 2px 7px #0000000b}
+.search-result:hover{border-color:#b91c1c;background:#fff7f7}
+.result-address{font-family:monospace;font-size:15px;font-weight:800;color:#b42318;background:#fee2e2;border-radius:7px;padding:7px 8px;text-align:center}
+.result-content{min-width:0}
+.search-item{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;padding:2px 0}
+.search-item b{font-size:14px;color:#18212b}
+.search-item span{font-size:13px;color:#53606c}
+.search-empty{color:var(--muted)}
+.special-result{grid-template-columns:190px minmax(0,1fr)}
+@media(max-width:600px){.search-result{grid-template-columns:1fr auto}.result-content{grid-column:1/-1}.special-result{grid-template-columns:1fr}}
 .special-storage{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:12px auto;max-width:1500px;padding:0 12px}
 .special-box{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:6px;box-shadow:0 2px 7px #0000000b;min-width:0}
 .special-cell{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;width:100%;min-height:54px;padding:9px;border:1px solid #b9c2ca;border-radius:8px;background:#f5f7f9;color:#25313d;cursor:pointer;font:inherit}
@@ -1170,51 +1182,87 @@ function searchScore(queryTokens,text){
  return score;
 }
 
+function formatSearchPreview(value){
+ const lines=String(value||"").split(/\n+/).map(x=>x.trim()).filter(Boolean);
+ if(!lines.length)return `<span class="search-empty">Ячейка пустая</span>`;
+ return lines.map(line=>{
+  // Наш формат хранения: АРТИКУЛ — ОПИСАНИЕ.
+  const m=line.match(/^(.+?)\s+—\s+(.+)$/);
+  if(m){
+   return `<div class="search-item"><b>${esc(m[1])}</b><span>${esc(m[2])}</span></div>`;
+  }
+  return `<div class="search-item"><b>${esc(line)}</b></div>`;
+ }).join("");
+}
+
 function doSearch(){
  const raw=document.getElementById("search").value.trim();
  const out=document.getElementById("results");
 
- if(!raw){out.innerHTML="";render();return;}
+ if(!raw){
+  out.innerHTML="";
+  render();
+  return;
+ }
 
  const tokens=searchTokens(raw);
  const found=[];
 
+ // Ищем по всему складу, независимо от выбранных фильтров.
+ // Это позволяет сначала найти деталь, а потом уже отфильтровать карту.
  for(let s=1;s<=5;s++){
   const ls=s===1?leftLetters:[...leftLetters,...rightLetters];
   for(const l of ls){
    for(let n=1;n<=10;n++){
-    const v=data["S"+s][l][String(n)]||"";
+    const v=String(data["S"+s][l][String(n)]||"").trim();
+    if(!v)continue;
+
     const a=address("S"+s,l,n);
-    const score=searchScore(tokens,`${a} ${v}`);
-    if(score>0)found.push({a,v,s:"S"+s,l,n:String(n),score});
+    const searchable=`${a} ${v}`;
+    const score=searchScore(tokens,searchable);
+
+    if(score>0){
+     found.push({a,v,s:"S"+s,l,n:String(n),score});
+    }
    }
   }
  }
 
  for(const type of ["resale","defect"]){
-  const v=specialData[type]||"";
+  const v=String(specialData[type]||"").trim();
+  if(!v)continue;
   const a=type==="resale"?"Перекупной товар":"Брак";
   const score=searchScore(tokens,`${a} ${v}`);
   if(score>0)found.push({a,v,special:type,score});
  }
 
- found.sort((a,b)=>b.score-a.score);
+ found.sort((a,b)=>b.score-a.score || a.a.localeCompare(b.a,"ru"));
 
  if(!found.length){
-  out.innerHTML='<div class="result">Ничего не найдено.</div>';
+  out.innerHTML=`<div class="search-head">По запросу «${esc(raw)}» ничего не найдено.</div>`;
   render();
   return;
  }
 
  out.innerHTML=
-  `<div style="font-weight:700;margin:8px 0">Найдено: ${found.length}</div>`+
-  found.map((x,i)=>x.special
-   ? `<div class="result"><div class="result-row"><div class="result-main" onclick="openSpecial('${x.special}')"><strong>${esc(x.a)}</strong><span class="article">${esc(x.v||"пусто")}</span></div></div></div>`
-   : `<div class="result"><div class="result-row"><div class="result-main" onclick="scrollToCell('${x.s}','${x.l}','${x.n}')"><strong>${esc(x.a)}</strong><span class="article">${esc(x.v||"пусто")}</span></div><button class="copy-btn" onclick="event.stopPropagation();copyText('${x.a}')">📋</button></div></div>`
+  `<div class="search-head">🔎 По запросу «${esc(raw)}» найдено ячеек: <b>${found.length}</b></div>`+
+  found.map(x=>x.special
+   ? `<div class="result search-result special-result" onclick="openSpecial('${x.special}')">
+       <div class="result-address">${esc(x.a)}</div>
+       <div class="result-content">${formatSearchPreview(x.v)}</div>
+     </div>`
+   : `<div class="result search-result" onclick="scrollToCell('${x.s}','${x.l}','${x.n}')">
+       <div class="result-address">${esc(x.a)}</div>
+       <div class="result-content">${formatSearchPreview(x.v)}</div>
+       <button class="copy-btn" title="Скопировать адрес" onclick="event.stopPropagation();copyText('${x.a}')">📋</button>
+     </div>`
   ).join("");
 
  render();
 }
+
+// Поиск должен обновляться сразу при вводе, а не только после сохранения ячейки.
+document.getElementById("search").addEventListener("input",doSearch);
 
 function scrollToCell(s,l,n){
  render();
