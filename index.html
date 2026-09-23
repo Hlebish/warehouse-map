@@ -684,21 +684,82 @@ function codePartTypes(value){
 }
 
 function brandMatchesValue(brand,value){
-  const text=normalizeSearchText(value);
-  const variants=expandSearchToken(brand);
+  const raw=String(value||"");
+  const text=normalizeSearchText(raw);
 
-  if(variants.some(v=>v && text.replace(/\s+/g,"").includes(v.replace(/\s+/g,"")))){
-    return true;
+  // Для марки используем только два надёжных источника:
+  // 1) название марки целиком в описании;
+  // 2) код марки в артикуле APXX...
+  //
+  // Короткие коды вроде FD/HD/TY не ищем как обычный текст:
+  // иначе они могут случайно совпасть с частью другого слова.
+  const brandNames={
+    мазда:["mazda","мазда"],
+    хонда:["honda","хонда"],
+    тойота:["toyota","тойота"],
+    ниссан:["nissan","ниссан"],
+    форд:["ford","форд"],
+    ауди:["audi","ауди"],
+    бмв:["bmw","бмв"],
+    фольксваген:["volkswagen","фольксваген"],
+    шевроле:["chevrolet","шевроле","chevy"],
+    мерседес:["mercedes","мерседес"],
+    лексус:["lexus","лексус"],
+    инфинити:["infiniti","инфинити"],
+    акура:["acura","акура"],
+    субару:["subaru","субару"],
+    киа:["kia","киа"],
+    хендай:["hyundai","хендай"],
+    опель:["opel","опель"],
+    шкода:["skoda","шкода"],
+    пежо:["peugeot","пежо"],
+    рено:["renault","рено"],
+    фиат:["fiat","фиат"]
+  };
+
+  const names=brandNames[brand]||[brand];
+
+  // Слово марки в ОПИСАНИИ.
+  const words=text.split(/\s+/).filter(Boolean);
+  if(names.some(name=>{
+    const n=normalizeSearchText(name);
+    return words.includes(n);
+  })) return true;
+
+  // Код марки в артикуле: AP + код + цифры/буквы.
+  // Например APFD1403 = Ford, APMZ0903 = Mazda.
+  const brandCodes={
+    мазда:"MZ",
+    хонда:"HD",
+    тойота:"TY",
+    ниссан:"NS",
+    форд:"FD",
+    ауди:"AU",
+    бмв:"BM",
+    фольксваген:"VW",
+    шевроле:"CH",
+    мерседес:"MB",
+    лексус:"LX",
+    инфинити:"INF",
+    акура:"AC",
+    субару:"SU",
+    киа:"KI",
+    хендай:"HY",
+    опель:"OP",
+    шкода:"SK",
+    пежо:"PG",
+    рено:"REN",
+    фиат:"FT"
+  };
+
+  const code=brandCodes[brand];
+  if(code){
+    const re=new RegExp("\\bAP"+code+"[A-Z0-9]*\\d+\\b","i");
+    if(re.test(raw)) return true;
   }
 
-  // Артикул склада: AP + код марки, например APMZ1606.
-  const brandAliases=(searchAliases[brand]||[brand]).map(normalizeSearchText);
-  return brandAliases.some(alias=>{
-    const compact=alias.replace(/\s+/g,"");
-    return compact.length<=4 && new RegExp("AP"+compact+"\\d+","i").test(String(value||""));
-  });
+  return false;
 }
-
 function partMatchesValue(part,value){
   const types=codePartTypes(value);
 
@@ -719,8 +780,10 @@ function searchScore(queryTokens,text){
     const part=tokenIsPartType(rawToken);
 
     if(brand){
+      // Марка должна совпасть строго по названию в этой строке
+      // или по коду марки в её артикуле.
       if(brandMatchesValue(brand,text)) score+=120;
-      else if(!queryTokenMatchesText(rawToken,text)) return 0;
+      else return 0;
       continue;
     }
 
@@ -832,21 +895,55 @@ async function importExcelFile(file){
       )
     };
 
-    // Если заголовки не распознаны, используем стандартный формат:
-    // 3 колонки -> A/B/C, 4+ колонок -> B/C/D.
-    if(columnMap.description<0)
-      columnMap.description=(rows[0]||[]).length===3 ? 0 : 1;
-    if(columnMap.article<0)
-      columnMap.article=(rows[0]||[]).length===3 ? 1 : 2;
-    if(columnMap.location<0)
-      columnMap.location=(rows[0]||[]).length===3 ? 2 : 3;
+    // Excel из 1С может приходить вообще без заголовков.
+    // Например:
+    // A = Описание, B = Артикул, C = Ячейка, D = Количество
+    // Причём первая строка иногда полностью пустая.
+    // Поэтому определяем колонку адреса по реальным значениям, а не
+    // предполагаем, что при 4 колонках адрес находится в D.
+    const sampleRows=rows.slice(0,Math.min(rows.length,15));
+
+    if(columnMap.location<0){
+      for(let c=0;c<(rows[0]||[]).length;c++){
+        const sample=sampleRows
+          .map(r=>String(r?.[c]??"").toUpperCase())
+          .join(" ");
+        if(/\\bS[1-5]\\s*[,\-]\s*[A-K]\\s*[-,]?\\s*\\d{1,2}/i.test(sample) ||
+           /\\bS[1-5]\\b/i.test(sample)){
+          columnMap.location=c;
+          break;
+        }
+      }
+    }
+
+    if(columnMap.description<0 || columnMap.article<0){
+      // Для беззаголовочного файла сначала используем типичный
+      // формат 3/4 колонок: Описание | Артикул | Ячейка | Количество.
+      const count=Math.max(...rows.map(r=>(r||[]).length),0);
+      if(count>=3){
+        if(columnMap.description<0) columnMap.description=0;
+        if(columnMap.location<0) columnMap.location=2;
+        if(columnMap.article<0){
+          columnMap.article = columnMap.location>0 ? columnMap.location-1 : 1;
+        }
+      }
+    }
+
+    // Если заголовок всё-таки распознан, его схема имеет приоритет.
+    // Если колонка артикула не определилась, берём колонку перед адресом.
+    if(columnMap.article<0 && columnMap.location>0)
+      columnMap.article=columnMap.location-1;
+    if(columnMap.description<0 && columnMap.article>0)
+      columnMap.description=columnMap.article-1;
 
     const imported={};
     const skipped=[];
     let rowCount=0;
     let locationCount=0;
 
-    for(let i=1;i<rows.length;i++){
+    // Не привязываемся к первой строке: она может быть пустой или
+    // содержать заголовок. findExcelColumns() пропустит пустые строки.
+    for(let i=0;i<rows.length;i++){
       const row=rows[i]||[];
       const {description,article,location}=findExcelColumns(row,columnMap);
 
@@ -1050,7 +1147,7 @@ function doSearch(){
         // Проверяем каждую запись внутри ячейки отдельно.
         // Например, запрос mz0903 должен показать только APMZ0903,
         // а не соседний APMZ0203C из той же ячейки.
-        const lines=String(v).split(/\\r?\\n/).map(x=>x.trim()).filter(Boolean);
+        const lines=String(v).split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
         const matchedLines=lines
           .map(line=>({line,score:searchScore(queryTokens,line)}))
           .filter(x=>x.score>0);
