@@ -660,21 +660,26 @@ function searchScore(queryTokens,text){
 
 function parseExcelLocations(value){
   const result=[];
-  const text=String(value||"").replace(/[()]/g," ");
-  const groupRe=/S([1-5])\s*,?\s*([A-Z](?:\s*\d+)?(?:\s*,\s*[A-Z]\s*\d+)*)/gi;
-  const cellRe=/([A-Z])\s*(\d+)/gi;
-  const allowedLetters=new Set([...leftLetters,...rightLetters]);
+  const text=String(value||"").toUpperCase();
 
-  for(const match of text.matchAll(groupRe)){
-    const street="S"+match[1];
-    for(const cell of match[2].matchAll(cellRe)){
-      const letter=cell[1].toUpperCase();
-      const num=Number(cell[2]);
-      if(allowedLetters.has(letter) && num>=1 && num<=10){
-        result.push(`${street}-${letter}-${num}`);
-      }
+  // 1С может писать адреса в разных вариантах:
+  // S5, A3
+  // (S5, A3) (S4, F3)
+  // S4, F6,F7,F8
+  // S5, A2, A3
+  // Поэтому ищем каждую пару УЛИЦА + ПОЛКА + НОМЕР отдельно.
+  const re=/S\s*([1-5])\s*[,;]?\s*([A-EFGHJK])\s*(\d+)/gi;
+
+  for(const match of text.matchAll(re)){
+    const street=Number(match[1]);
+    const letter=match[2].toUpperCase();
+    const num=Number(match[3]);
+
+    if(street>=1 && street<=5 && letters.includes(letter) && num>=1 && num<=10){
+      result.push(`S${street}-${letter}-${num}`);
     }
   }
+
   return [...new Set(result)];
 }
 
