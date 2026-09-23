@@ -26,8 +26,25 @@ main{padding:12px;max-width:1500px;width:100%;margin:auto;overflow:hidden}
 .cell{width:32px;height:30px;min-height:30px;border:1px solid #b9c2ca;border-radius:6px;background:var(--empty);font-size:11px;padding:0;cursor:pointer;text-align:center}
 .cell:hover{outline:2px solid var(--accent);outline-offset:1px;z-index:1}.cell.filled{background:var(--filled);font-weight:700}
 .cell.search-hit{background:var(--search)!important;color:#fff!important;border-color:#b91c1c;box-shadow:0 0 0 2px #ef444466,0 2px 8px #ef444466}
-.stats{margin:10px 0;color:var(--muted);font-size:13px}
-#modal,#specialModal{position:fixed;inset:0;background:#0007;display:none;align-items:center;justify-content:center;padding:16px;z-index:20}
+.stats{margin:10px 0;color:var(--muted);font-size:13px}.filters{display:flex;gap:7px;flex-wrap:wrap;margin:8px 0 10px}
+.filters select,.filters button{padding:8px 10px}
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin:10px 0}
+.stat-card{background:#fff;border:1px solid var(--border);border-radius:10px;padding:10px}
+.stat-card b{display:block;font-size:18px;color:var(--ink)}
+.stat-card span{font-size:12px;color:var(--muted)}
+.result-row{display:flex;gap:7px;align-items:center}
+.result-main{flex:1;min-width:0}
+.copy-btn{padding:5px 8px;font-size:12px}
+.cell.filter-hidden{display:none}
+.shelf.filter-empty{display:none}
+.street.filter-hidden{display:none}
+.cell.focused{animation:cellFocus 1.8s ease}
+@keyframes cellFocus{0%,100%{transform:scale(1)}25%,70%{transform:scale(1.18);outline:3px solid var(--accent);z-index:4}}
+.history-dialog{width:min(760px,100%)}
+.history-item{border-bottom:1px solid var(--border);padding:9px 0;font-size:13px}
+.history-item small{color:var(--muted)}
+
+#modal,#specialModal,#historyModal{position:fixed;inset:0;background:#0007;display:none;align-items:center;justify-content:center;padding:16px;z-index:20}
 #specialModal{z-index:30}.dialog{background:white;border-radius:14px;width:min(520px,100%);padding:18px;box-shadow:0 10px 40px #0005}
 .dialog h2{margin-top:0}.addr{font-family:monospace;color:var(--accent);font-weight:700}
 label{display:block;font-size:13px;font-weight:700;margin:13px 0 6px}
@@ -135,9 +152,18 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
 <h1>📦 Интерактивная карта склада</h1>
 <div class="sub">Адрес: улица (S1–S5) → полка (A–E слева / F–K справа)</div>
 <div class="toolbar">
-<input id="search" type="search" placeholder="🔎 Поиск детали, артикула или адреса…" style="width:100%;min-width:0">
-<button class="primary" onclick="document.getElementById('excelFile').click()">📥 Загрузить Excel</button>
+<input id="search" type="search" placeholder="🔎 Поиск детали, артикула, адреса — можно с ошибками…" style="flex:1 1 360px;min-width:220px">
+<button class="primary" onclick="document.getElementById('excelFile').click()">📥 Excel</button>
+<button onclick="exportExcel()">📤 Экспорт</button>
+<button onclick="showHistory()">🕘 История</button>
 <input id="excelFile" type="file" accept=".xlsx,.xls" style="display:none">
+</div>
+<div class="filters">
+<select id="filterStatus"><option value="all">Все ячейки</option><option value="filled">Только занятые</option><option value="empty">Только свободные</option></select>
+<select id="filterStreet"><option value="all">Все улицы</option><option>S1</option><option>S2</option><option>S3</option><option>S4</option><option>S5</option></select>
+<select id="filterSide"><option value="all">Все стороны</option><option value="left">Левая A–E</option><option value="right">Правая F–K</option></select>
+<select id="filterType"><option value="all">Все детали</option><option value="капот">Капоты</option><option value="бампер">Бамперы</option><option value="крыло">Крылья</option><option value="дверь">Двери</option><option value="фара">Фары</option><option value="фонарь">Фонари</option><option value="решетка">Решётки</option><option value="other">Другое</option></select>
+<button onclick="resetFilters()">✖ Сбросить фильтры</button>
 </div>
 </header>
 <main>
@@ -161,6 +187,12 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
 <h2 id="specialTitle"></h2><label>Что находится здесь</label>
 <textarea id="specialContent" placeholder="Например: APHD4307 — 1 шт.&#10;Можно указать несколько артикулов."></textarea>
 <div class="actions"><button onclick="closeSpecial()">Отмена</button><button class="primary" onclick="saveSpecial()">Сохранить</button></div>
+</div></div>
+
+<div id="historyModal"><div class="dialog history-dialog">
+<h2>🕘 История изменений</h2>
+<div id="historyList">Загрузка…</div>
+<div class="actions"><button onclick="closeHistory()">Закрыть</button></div>
 </div></div>
 
 <div id="modal"><div class="dialog">
@@ -246,39 +278,126 @@ function setLocal(){
 }
 function setSync(text,cls){const e=document.getElementById("syncStatus");e.textContent=text;e.className="sync "+(cls||"");}
 
+function getFilterState(){
+ return {
+  status:document.getElementById("filterStatus")?.value||"all",
+  street:document.getElementById("filterStreet")?.value||"all",
+  side:document.getElementById("filterSide")?.value||"all",
+  type:document.getElementById("filterType")?.value||"all"
+ };
+}
+
+function matchesPartType(value,type){
+ if(type==="all")return true;
+ const text=normalizeSearchText(value);
+ if(type==="other"){
+  return !["капот","бампер","крыло","дверь","фара","фонарь","решетка"].some(x=>text.includes(x));
+ }
+ const aliases={
+  "капот":["капот","hood","bonnet"],
+  "бампер":["бампер","bumper"],
+  "крыло":["крыло","wing"],
+  "дверь":["дверь","двери","door"],
+  "фара":["фара","headlight"],
+  "фонарь":["фонарь","tail light","taillight"],
+  "решетка":["решетка","решётка","grille"]
+ };
+ return (aliases[type]||[type]).some(x=>queryTokenMatchesText(x,value));
+}
+
+function cellVisible(s,l,n,v,filters){
+ const filled=!!String(v||"").trim();
+ if(filters.status==="filled"&&!filled)return false;
+ if(filters.status==="empty"&&filled)return false;
+ if(filters.street!=="all"&&filters.street!=="S"+s)return false;
+ const isLeft=leftLetters.includes(l);
+ if(filters.side==="left"&&!isLeft)return false;
+ if(filters.side==="right"&&isLeft)return false;
+ if(!matchesPartType(v,filters.type))return false;
+ return true;
+}
+
 function render(){
  const map=document.getElementById("map");map.innerHTML="";
- let visibleOccupied=0;
+ const filters=getFilterState();
+
  for(let s=1;s<=5;s++){
-  const street="S"+s,box=document.createElement("section");box.className="street";
+  const street="S"+s;
+  const box=document.createElement("section");
+  box.className="street"+(filters.street!=="all"&&filters.street!==street?" filter-hidden":"");
   const isS1=street==="S1";
   box.innerHTML=isS1
    ? `<h2>${street}</h2><div class="sides single-side"><div class="side"><h3>Левая сторона · A–E</h3></div></div>`
    : `<h2>${street}</h2><div class="sides"><div class="side"><h3>Левая сторона · A–E</h3></div><div class="side"><h3>Правая сторона · F–K</h3></div></div>`;
   const sides=box.querySelectorAll(".side");
-  leftLetters.forEach(l=>{visibleOccupied+=shelf(box,s,l,sides[0]);});
-  if(!isS1)rightLetters.forEach(l=>{visibleOccupied+=shelf(box,s,l,sides[1]);});
+  leftLetters.forEach(l=>shelf(box,s,l,sides[0],filters));
+  if(!isS1)rightLetters.forEach(l=>shelf(box,s,l,sides[1],filters));
   map.appendChild(box);
  }
- document.getElementById("stats").textContent=`Занято: ${visibleOccupied} из 450 ячеек`;
+ renderStats();
  renderSpecial();
 }
-function shelf(box,s,l,parent){
+
+function shelf(box,s,l,parent,filters){
  const sh=document.createElement("div");sh.className="shelf";
  sh.innerHTML=`<div class="shelf-title">Полка ${l}</div><div class="cells"></div>`;
- const cells=sh.querySelector(".cells"),q=(document.getElementById("search")?.value||"").trim().toLowerCase();
- let occupied=0;
+ const cells=sh.querySelector(".cells");
+ let visibleCount=0;
+
  for(let n=1;n<=10;n++){
-  const val=data["S"+s][l][String(n)]||"",a=address("S"+s,l,n);
-  if(val.trim())occupied++;
-  const match=q&&(a.toLowerCase().includes(q)||val.toLowerCase().includes(q));
+  const v=data["S"+s][l][String(n)]||"";
+  const a=address("S"+s,l,n);
+  const visible=cellVisible(s,l,n,v,filters);
+  if(visible)visibleCount++;
+
+  const q=(document.getElementById("search")?.value||"").trim();
+  const match=q && searchScore(searchTokens(q),`${a} ${v}`)>0;
+
   const c=document.createElement("button");
-  c.className="cell"+(val.trim()?" filled":"")+(match?" search-hit":"");
-  c.title=a+(val.trim()?` — ${val}`:"");c.innerHTML=`<b>${n}</b>`;
-  c.onclick=()=>openModal("S"+s,l,String(n));cells.appendChild(c);
+  c.id=`cell-${s}-${l}-${n}`;
+  c.className="cell"+(v.trim()?" filled":"")+(match?" search-hit":"")+(visible?"":" filter-hidden");
+  c.title=a+(v.trim()?` — ${v}`:"");
+  c.innerHTML=`<b>${n}</b>`;
+  c.onclick=()=>openModal("S"+s,l,String(n));
+  cells.appendChild(c);
  }
- parent.appendChild(sh);return occupied;
+
+ if(!visibleCount)sh.classList.add("filter-empty");
+ parent.appendChild(sh);
 }
+
+function renderStats(){
+ let total=0,occupied=0,items=0,empty=0;
+ const typeCounts={капот:0,бампер:0,крыло:0,дверь:0,фара:0,фонарь:0,решетка:0};
+
+ for(let s=1;s<=5;s++){
+  const ls=s===1?leftLetters:[...leftLetters,...rightLetters];
+  for(const l of ls){
+   for(let n=1;n<=10;n++){
+    total++;
+    const v=String(data["S"+s][l][String(n)]||"").trim();
+    if(v){occupied++;items+=v.split(/\n/).filter(Boolean).length;}
+    else empty++;
+    for(const type of Object.keys(typeCounts)){
+      if(v && matchesPartType(v,type))typeCounts[type]++;
+    }
+   }
+  }
+ }
+
+ const percent=total?((occupied/total)*100).toFixed(1):"0.0";
+ document.getElementById("stats").innerHTML=`
+ <div class="stats-grid">
+  <div class="stat-card"><b>${total}</b><span>Всего ячеек</span></div>
+  <div class="stat-card"><b>${occupied}</b><span>Занято</span></div>
+  <div class="stat-card"><b>${empty}</b><span>Свободно</span></div>
+  <div class="stat-card"><b>${percent}%</b><span>Заполненность</span></div>
+  <div class="stat-card"><b>${items}</b><span>Записей в ячейках</span></div>
+  <div class="stat-card"><b>${typeCounts.бампер}</b><span>Ячеек с бамперами</span></div>
+  <div class="stat-card"><b>${typeCounts.капот}</b><span>Ячеек с капотами</span></div>
+ </div>`;
+}
+
 function openModal(s,l,n){
  current={s,l,n};document.getElementById("addr").textContent=address(s,l,n);
  document.getElementById("content").value=data[s][l][n]||"";
@@ -286,12 +405,23 @@ function openModal(s,l,n){
  setTimeout(()=>document.getElementById("content").focus(),50);
 }
 function closeModal(){document.getElementById("modal").style.display="none";current=null}
-async function saveCell(){
+async async function saveCell(){
  if(!current)return;
  const value=document.getElementById("content").value.trim();
- data[current.s][current.l][current.n]=value;setLocal();render();doSearch();
- try{await rootRef.child("cells").child(current.s).child(current.l).child(current.n).set(value);setSync("☁️ Синхронизировано","ok");}
- catch(e){setSync("⚠️ Ошибка синхронизации","err");console.error(e)}
+ const oldValue=data[current.s][current.l][current.n]||"";
+ if(oldValue===value){closeModal();return;}
+
+ try{
+  await rootRef.child("cells").child(current.s).child(current.l).child(current.n).set(value);
+  data[current.s][current.l][current.n]=value;
+  setLocal();render();doSearch();
+  await writeHistory("cell",address(current.s,current.l,current.n),oldValue,value);
+  setSync("☁️ Синхронизировано","ok");
+ }catch(e){
+  setSync("⚠️ Ошибка синхронизации","err");
+  console.error(e);
+  alert("Не удалось сохранить изменение: "+(e?.message||e));
+ }
  closeModal();
 }
 
@@ -314,7 +444,7 @@ function renderSpecial(){
   const v=specialData[type]||"";document.getElementById(id).classList.toggle("filled",!!v);document.getElementById(preview).textContent=v;
  }
 }
-async function clearAll(){
+async async function clearAll(){
  if(!confirm("Удалить содержимое всех видимых 450 ячеек?"))return;
  data=createEmptyData();specialData={resale:"",defect:""};setLocal();render();doSearch();
  try{await rootRef.set({cells:data,special:specialData});setSync("☁️ Синхронизировано","ok");}
@@ -948,86 +1078,215 @@ document.getElementById("excelFile").addEventListener("change",async e=>{
   await importExcelFile(file);
 });
 
-function doSearch(){
-  const raw=document.getElementById("search").value.trim();
-  const out=document.getElementById("results");
-
-  if(!raw){
-    out.innerHTML="";
-    return;
-  }
-
-  const queryTokens=searchTokens(raw);
-  const found=[];
-
-  for(let s=1;s<=5;s++){
-    const ls=s===1?leftLetters:letters;
-
-    for(const l of ls){
-      for(let n=1;n<=10;n++){
-        const v=data["S"+s][l][String(n)]||"";
-        const a=address("S"+s,l,n);
-        const searchable=`${a} ${v}`;
-
-        const score=searchScore(queryTokens,searchable);
-
-        if(score>0){
-          found.push({a,v,s:"S"+s,l,n:String(n),score});
-        }
-      }
-    }
-  }
-
-  for(const type of ["resale","defect"]){
-    const v=specialData[type]||"";
-    const a=type==="resale"?"Перекупной товар":"Брак";
-    const score=searchScore(queryTokens,`${a} ${v}`);
-
-    if(score>0){
-      found.push({a,v,special:type,score});
-    }
-  }
-
-  found.sort((a,b)=>b.score-a.score);
-
-  if(!found.length){
-    out.innerHTML='<div class="result">Ничего не найдено.</div>';
-    return;
-  }
-
-  out.innerHTML=
-    `<div style="font-weight:700;margin:8px 0">Найдено: ${found.length}</div>`+
-    found.map(x=>x.special
-      ? `<div class="result" onclick="openSpecial('${x.special}')">
-           <strong>${esc(x.a)}</strong>
-           <span class="article">${esc(x.v||"пусто")}</span>
-         </div>`
-      : `<div class="result" onclick="openModal('${x.s}','${x.l}','${x.n}')">
-           <strong>${esc(x.a)}</strong>
-           <span class="article">${esc(x.v||"пусто")}</span>
-         </div>`
-    ).join("");
+function normalizeForSearch(value){
+ return String(value||"").toLowerCase().replace(/ё/g,"е").trim();
 }
 
-document.getElementById("search").addEventListener("input",()=>{render();doSearch()});
-
-rootRef.on("value",async snap=>{
- const remote=snap.val();
- if(!remote){
-  if(hasLocalData()&&!remoteLoaded){
-   const localD=JSON.parse(localStorage.getItem("warehouseMapData")||"null");
-   const localS=JSON.parse(localStorage.getItem("warehouseSpecialData")||"null");
-   data=normalizeData(localD);specialData=localS||{resale:"",defect:""};
-   setLocal();render();doSearch();
-   try{await rootRef.set({cells:data,special:specialData});setSync("☁️ Данные ПК перенесены в Firebase","ok");}
-   catch(e){setSync("⚠️ Нет записи в Firebase","err");}
-  }else{data=createEmptyData();specialData={resale:"",defect:""};setLocal();render();doSearch();setSync("☁️ Firebase подключён","ok")}
-  remoteLoaded=true;return;
+function fuzzyTokenMatch(query,text){
+ const q=normalizeForSearch(query).replace(/[^a-zа-я0-9]/g,"");
+ const t=normalizeForSearch(text);
+ const words=t.split(/[^a-zа-я0-9]+/).filter(Boolean);
+ if(!q)return true;
+ if(words.some(w=>w.includes(q)||q.includes(w)))return true;
+ if(q.length>=3){
+  return words.some(w=>{
+   const d=levenshtein(q,w);
+   const max=q.length<=4?1:q.length<=7?2:3;
+   return d<=max;
+  });
  }
- data=normalizeData(remote.cells);specialData=remote.special||{resale:"",defect:""};setLocal();remoteLoaded=true;render();doSearch();setSync("☁️ Синхронизировано","ok");
-},err=>{setSync("⚠️ Ошибка Firebase","err");console.error(err)});
+ return false;
+}
 
-render();renderSpecial();
+function searchScore(queryTokens,text){
+ let score=0;
+ for(const token of queryTokens){
+  const variants=expandSearchToken(token);
+  let matched=false;
+
+  for(const variant of variants){
+   if(!variant)continue;
+   if(fuzzyTokenMatch(variant,text)){matched=true;score+=100;break;}
+  }
+
+  // Если это известный тип детали, ищем его напрямую в описании,
+  // а не требуем, чтобы он был закодирован в артикуле.
+  const part=tokenIsPartType(token);
+  if(!matched && part){
+   if(partMatchesValue(part,text)){matched=true;score+=110;}
+  }
+
+  if(!matched)return 0;
+ }
+ return score;
+}
+
+function doSearch(){
+ const raw=document.getElementById("search").value.trim();
+ const out=document.getElementById("results");
+
+ if(!raw){out.innerHTML="";render();return;}
+
+ const tokens=searchTokens(raw);
+ const found=[];
+
+ for(let s=1;s<=5;s++){
+  const ls=s===1?leftLetters:[...leftLetters,...rightLetters];
+  for(const l of ls){
+   for(let n=1;n<=10;n++){
+    const v=data["S"+s][l][String(n)]||"";
+    const a=address("S"+s,l,n);
+    const score=searchScore(tokens,`${a} ${v}`);
+    if(score>0)found.push({a,v,s:"S"+s,l,n:String(n),score});
+   }
+  }
+ }
+
+ for(const type of ["resale","defect"]){
+  const v=specialData[type]||"";
+  const a=type==="resale"?"Перекупной товар":"Брак";
+  const score=searchScore(tokens,`${a} ${v}`);
+  if(score>0)found.push({a,v,special:type,score});
+ }
+
+ found.sort((a,b)=>b.score-a.score);
+
+ if(!found.length){
+  out.innerHTML='<div class="result">Ничего не найдено.</div>';
+  render();
+  return;
+ }
+
+ out.innerHTML=
+  `<div style="font-weight:700;margin:8px 0">Найдено: ${found.length}</div>`+
+  found.map((x,i)=>x.special
+   ? `<div class="result"><div class="result-row"><div class="result-main" onclick="openSpecial('${x.special}')"><strong>${esc(x.a)}</strong><span class="article">${esc(x.v||"пусто")}</span></div></div></div>`
+   : `<div class="result"><div class="result-row"><div class="result-main" onclick="scrollToCell('${x.s}','${x.l}','${x.n}')"><strong>${esc(x.a)}</strong><span class="article">${esc(x.v||"пусто")}</span></div><button class="copy-btn" onclick="event.stopPropagation();copyText('${x.a}')">📋</button></div></div>`
+  ).join("");
+
+ render();
+}
+
+function scrollToCell(s,l,n){
+ render();
+ const el=document.getElementById(`cell-${s}-${l}-${n}`);
+ if(!el)return;
+ el.scrollIntoView({behavior:"smooth",block:"center",inline:"center"});
+ el.classList.remove("focused");
+ void el.offsetWidth;
+ el.classList.add("focused");
+}
+
+async function copyText(value){
+ try{
+  await navigator.clipboard.writeText(String(value));
+  setSync(`📋 Скопировано: ${value}`,"ok");
+ }catch(e){
+  const ta=document.createElement("textarea");
+  ta.value=value;document.body.appendChild(ta);ta.select();
+  document.execCommand("copy");ta.remove();
+  setSync(`📋 Скопировано: ${value}`,"ok");
+ }
+}
+
+function resetFilters(){
+ document.getElementById("filterStatus").value="all";
+ document.getElementById("filterStreet").value="all";
+ document.getElementById("filterSide").value="all";
+ document.getElementById("filterType").value="all";
+ render();
+}
+
+["filterStatus","filterStreet","filterSide","filterType"].forEach(id=>{
+ document.getElementById(id).addEventListener("change",render);
+});
+
+async function writeHistory(kind,address,oldValue,newValue){
+ try{
+  const user=auth.currentUser;
+  await rootRef.child("history").push({
+   kind,
+   address,
+   oldValue:String(oldValue||""),
+   newValue:String(newValue||""),
+   email:user?.email||"неизвестно",
+   timestamp:firebase.database.ServerValue.TIMESTAMP
+  });
+ }catch(e){
+  console.warn("История не записана:",e);
+ }
+}
+
+function exportExcel(){
+ if(typeof XLSX==="undefined"){
+  alert("Модуль Excel ещё не загрузился. Обнови страницу и попробуй снова.");
+  return;
+ }
+
+ const rows=[["Ячейка","Артикул","Описание"]];
+
+ for(let s=1;s<=5;s++){
+  const ls=s===1?leftLetters:[...leftLetters,...rightLetters];
+  for(const l of ls){
+   for(let n=1;n<=10;n++){
+    const v=String(data["S"+s][l][String(n)]||"").trim();
+    if(!v)continue;
+
+    const lines=v.split(/\n+/).map(x=>x.trim()).filter(Boolean);
+    if(!lines.length)continue;
+
+    for(const line of lines){
+     const m=line.match(/^(.+?)\s*[—-]\s*(.*)$/);
+     if(m)rows.push([address("S"+s,l,n),m[1].trim(),m[2].trim()]);
+     else rows.push([address("S"+s,l,n),line,""]);
+    }
+   }
+  }
+ }
+
+ const ws=XLSX.utils.aoa_to_sheet(rows);
+ ws["!cols"]=[{wch:14},{wch:28},{wch:70}];
+ const wb=XLSX.utils.book_new();
+ XLSX.utils.book_append_sheet(wb,ws,"Склад");
+
+ const date=new Date().toISOString().slice(0,10);
+ XLSX.writeFile(wb,`склад_${date}.xlsx`);
+ setSync("📤 Excel выгружен","ok");
+}
+
+async function showHistory(){
+ const modal=document.getElementById("historyModal");
+ const list=document.getElementById("historyList");
+ modal.style.display="flex";
+ list.innerHTML="Загрузка…";
+
+ try{
+  const snap=await rootRef.child("history").orderByChild("timestamp").limitToLast(100).once("value");
+  const values=snap.val()||{};
+  const items=Object.values(values).sort((a,b)=>(b.timestamp||0)-(a.timestamp||0));
+
+  if(!items.length){
+   list.innerHTML="<div>История пока пустая.</div>";
+   return;
+  }
+
+  list.innerHTML=items.map(x=>{
+   const date=x.timestamp?new Date(x.timestamp).toLocaleString("ru-RU"):"—";
+   const oldV=x.oldValue?esc(x.oldValue):"<em>пусто</em>";
+   const newV=x.newValue?esc(x.newValue):"<em>пусто</em>";
+   return `<div class="history-item">
+    <b>${esc(x.address||"")}</b> — ${esc(x.email||"")}
+    <br><small>${date}</small>
+    <br>${oldV} → <b>${newV}</b>
+   </div>`;
+  }).join("");
+ }catch(e){
+  console.error(e);
+  list.innerHTML=`<div class="sync err">Не удалось загрузить историю: ${esc(e?.message||e)}</div>`;
+ }
+}
+function closeHistory(){document.getElementById("historyModal").style.display="none";}
+
 </script>
 </body>
 </html>
