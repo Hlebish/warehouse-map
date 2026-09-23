@@ -141,14 +141,6 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
 <input id="search" type="search" placeholder="🔎 Поиск детали, артикула или адреса…" style="width:100%;min-width:0">
 <button class="primary" onclick="document.getElementById('excelFile').click()">📥 Загрузить Excel</button>
 <button onclick="temporaryClearWarehouse()" style="background:#fee2e2;color:#991b1b;border-color:#fca5a5">🗑️ Очистить склад</button>
-<select id="filterCategory" title="Категория товара" style="padding:10px 12px;border:1px solid #b8c4d0;border-radius:8px;font-size:15px">
-  <option value="all">Все категории</option>
-  <option value="капот">Капот</option>
-  <option value="крыло">Крыло</option>
-  <option value="бампер">Бампер</option>
-  <option value="решетка">Решётки</option>
-  <option value="пластмасса">Пластмассовые детали</option>
-</select>
 <input id="excelFile" type="file" accept=".xlsx,.xls" style="display:none">
 </div>
 </header>
@@ -275,26 +267,6 @@ function setLocal(){
 }
 function setSync(text,cls){const e=document.getElementById("syncStatus");e.textContent=text;e.className="sync "+(cls||"");}
 
-function detectProductCategory(value){
- const t=normalizeSearchText(value);
-
- if(/\bкапот\b/.test(t)) return "капот";
- if(/\bбампер\b/.test(t)) return "бампер";
- if(t.includes("крыло") || t.includes("крылья")) return "крыло";
- if(t.includes("решет") || t.includes("решёт")) return "решетка";
-
- if(
-   t.includes("пластмасс") ||
-   t.includes("пластик") ||
-   t.includes("пласт.")
- ) return "пластмасса";
-
- return "other";
-}
-function cellMatchesCategory(value,category){
- if(category==="all") return true;
- return String(value||"").split(/\r?\n/).some(line=>detectProductCategory(line)===category);
-}
 function render(){
  const map=document.getElementById("map");map.innerHTML="";
  let visibleOccupied=0;
@@ -320,10 +292,7 @@ function shelf(box,s,l,parent){
  for(let n=1;n<=10;n++){
   const val=data["S"+s][l][String(n)]||"",a=address("S"+s,l,n);
   if(val.trim())occupied++;
-  const category=document.getElementById("filterCategory")?.value||"all";
-  const categoryMatch=cellMatchesCategory(val,category);
   const match=q&&(a.toLowerCase().includes(q)||val.toLowerCase().includes(q));
-  if(!categoryMatch) continue;
   const c=document.createElement("button");
   c.className="cell"+(val.trim()?" filled":"")+(match?" search-hit":"");
   c.title=a+(val.trim()?` — ${val}`:"");c.innerHTML=`<b>${n}</b>`;
@@ -1355,7 +1324,6 @@ function doSearch(){
 }
 
 document.getElementById("search").addEventListener("input",()=>{render();doSearch()});
-document.getElementById("filterCategory").addEventListener("change",()=>{render();doSearch()});
 
 rootRef.on("value",async snap=>{
  const remote=snap.val();
