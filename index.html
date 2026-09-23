@@ -134,30 +134,47 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
 }
 .plan-marker{
   position:absolute;
-  transform:translate(-50%,-50%);
+  transform:translate(-50%,0);
   width:0;
   height:0;
   cursor:pointer;
   z-index:3;
 }
-.plan-badge{
+.plan-aisle-highlight{
   position:absolute;
-  left:0;
-  top:0;
-  transform:translate(-50%,-50%);
+  left:50%;
+  transform:translateX(-50%);
+  width:110px;
+  border:none;
+  background:transparent;
+  border-radius:50%;
+  box-shadow:none;
   display:flex;
   align-items:center;
-  gap:3px;
-  padding:3px 5px;
-  border-radius:6px;
-  border:2px solid #f0c978;
-  background:rgba(255,219,126,.94);
-  box-shadow:0 0 0 2px rgba(255,255,255,.85),0 2px 9px rgba(0,0,0,.24);
-  color:#141414;
-  font:800 11px/1 Arial,sans-serif;
-  white-space:nowrap;
-  animation:planPulse 1.35s ease-in-out infinite;
+  justify-content:center;
+  pointer-events:none;
 }
+.plan-aisle-label{
+  color:#fff;
+  background:radial-gradient(circle,
+    rgba(255,214,65,.92) 0%,
+    rgba(255,214,65,.58) 28%,
+    rgba(255,214,65,.20) 52%,
+    rgba(255,214,65,0) 76%);
+  border:none;
+  border-radius:50%;
+  padding:18px 28px;
+  min-width:62px;
+  text-align:center;
+  font:800 30px/1 Arial,sans-serif;
+  white-space:nowrap;
+  text-shadow:
+    0 1px 2px rgba(0,0,0,.55),
+    0 0 8px rgba(255,224,90,.95);
+  filter:drop-shadow(0 0 7px rgba(255,214,65,.75));
+}
+
+
 .plan-badge .plan-side-arrow{
   font-size:10px;
   line-height:1;
@@ -247,7 +264,7 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
 <div class="toolbar">
 <input id="search" type="search" placeholder="🔎 Поиск детали, артикула или адреса…" style="width:100%;min-width:0">
 <button class="primary" onclick="document.getElementById('excelFile').click()">📥 Загрузить Excel</button>
-<button onclick="temporaryClearWarehouse()" style="background:#fee2e2;color:#991b1b;border-color:#fca5a5">🗑️ Очистить склад</button><button onclick="openHistory()">🕘 История</button>
+<button data-edit-only onclick="temporaryClearWarehouse()" style="background:#fee2e2;color:#991b1b;border-color:#fca5a5">🗑️ Очистить склад</button><button onclick="openHistory()">🕘 История</button>
 <input id="excelFile" type="file" accept=".xlsx,.xls" style="display:none">
 </div>
 </header>
@@ -281,7 +298,7 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
 <div id="specialModal"><div class="dialog">
 <h2 id="specialTitle"></h2><label>Что находится здесь</label>
 <textarea id="specialContent" placeholder="Например: APHD4307 — 1 шт.&#10;Можно указать несколько артикулов."></textarea>
-<div class="actions"><button onclick="closeSpecial()">Отмена</button><button class="primary" onclick="saveSpecial()">Сохранить</button></div>
+<div class="actions"><button onclick="closeSpecial()">Отмена</button><button data-edit-only class="primary" onclick="saveSpecial()">Сохранить</button></div>
 </div></div>
 
 <div id="modal"><div class="dialog">
@@ -290,8 +307,8 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
 <div id="itemMetaList" class="item-meta"></div>
 <div class="actions">
 <button onclick="closeModal()">Отмена</button>
-<button onclick="openMoveModal()">📦 Переместить деталь</button>
-<button class="primary" onclick="saveCell()">Сохранить</button>
+<button data-edit-only onclick="openMoveModal()">📦 Переместить деталь</button>
+<button data-edit-only class="primary" onclick="saveCell()">Сохранить</button>
 </div>
 </div></div>
 
@@ -304,7 +321,7 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
 <div id="moveError" style="display:none;color:#b91c1c;margin-top:10px"></div>
 <div class="actions">
 <button onclick="closeMoveModal()">Отмена</button>
-<button class="primary" onclick="moveSelectedDetail()">Переместить</button>
+<button data-edit-only class="primary" onclick="moveSelectedDetail()">Переместить</button>
 </div>
 </div></div>
 
@@ -359,6 +376,12 @@ const rootRef=db.ref("warehouse");
     });
 }
 
+function applyAccessMode(){
+  const editOnlyIds=["clearWarehouseBtn","saveBtn","moveBtn"];
+  const editable=document.querySelectorAll("[data-edit-only]");
+  editable.forEach(el=>el.style.display=canEdit()?"":"none");
+}
+
 auth.onAuthStateChanged(user => {
   const loginScreen = document.getElementById("loginScreen");
 
@@ -367,6 +390,9 @@ auth.onAuthStateChanged(user => {
   } else {
     loginScreen.style.display = "flex";
   }
+
+  setAccessUi();
+  initHistoryUi();
 });
 
 const letters=["A","B","C","D","E","F","G","H","J","K"];
@@ -414,6 +440,171 @@ function formatDate(ts){
  return d.toLocaleString("ru-RU",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"});
 }
 function currentUserEmail(){return auth.currentUser?.email||"неизвестно";}
+
+const OWNER_EMAIL="glebur172@gmail.com";
+function canEdit(){
+  const email=String(auth.currentUser?.email||"").toLowerCase();
+  return email===OWNER_EMAIL.toLowerCase();
+}
+function setAccessUi(){
+  const editable=canEdit();
+  document.querySelectorAll("[data-edit-only]").forEach(el=>{
+    el.style.display=editable?"":"none";
+  });
+}
+
+function recordMetaChanges(addr,oldValue,newValue){
+  const oldLines=new Set(linesOf(oldValue));
+  const newLines=new Set(linesOf(newValue));
+  const added=[];
+  const removed=[];
+  const ts=nowTs();
+
+  for(const line of newLines){
+    if(!oldLines.has(line)){
+      added.push(line);
+      const key=itemKey(addr,line);
+      if(!itemMeta[key]) itemMeta[key]={addedAt:ts,updatedAt:null};
+    }
+  }
+
+  for(const line of oldLines){
+    if(!newLines.has(line)){
+      removed.push(line);
+      delete itemMeta[itemKey(addr,line)];
+    }
+  }
+
+  return {added,removed};
+}
+
+function updateMetaAfterMove(fromAddr,toAddr,detail){
+  const fromKey=itemKey(fromAddr,detail);
+  const toKey=itemKey(toAddr,detail);
+  const meta=itemMeta[fromKey]||{addedAt:null,updatedAt:null};
+  delete itemMeta[fromKey];
+  itemMeta[toKey]=meta;
+}
+
+async function writeHistory(event){
+  try{
+    if(!auth.currentUser) return false;
+    await rootRef.child("history").push({
+      ...event,
+      email:currentUserEmail(),
+      timestamp:firebase.database.ServerValue.TIMESTAMP
+    });
+    return true;
+  }catch(e){
+    console.warn("История не записана:",e);
+    return false;
+  }
+}
+
+function historyTypeLabel(type){
+  return ({
+    move:"📦 Перемещение",
+    add:"➕ Добавление",
+    remove:"➖ Удаление",
+    edit:"✏️ Изменение",
+    import:"📥 Импорт Excel",
+    clear:"🗑️ Очистка склада"
+  })[type]||"Событие";
+}
+
+function renderHistory(){
+  const list=document.getElementById("historyList");
+  if(!list)return;
+
+  const q=String(document.getElementById("historySearch")?.value||"").trim().toLowerCase();
+  const type=String(document.getElementById("historyType")?.value||"all");
+
+  let items=(window.__warehouseHistory||[]).filter(x=>{
+    if(type!=="all" && x.type!==type)return false;
+    if(!q)return true;
+    const hay=[
+      x.detail,x.article,x.address,x.from,x.to,x.email,x.fileName
+    ].filter(Boolean).join(" ").toLowerCase();
+    return hay.includes(q);
+  });
+
+  if(!items.length){
+    list.innerHTML='<div class="result">История по заданным условиям пуста.</div>';
+    return;
+  }
+
+  list.innerHTML=items.map(x=>{
+    const time=formatDate(x.timestamp);
+    const title=historyTypeLabel(x.type);
+
+    let body="";
+    if(x.type==="move"){
+      body=`<div class="history-move">${esc(x.detail||"Деталь")}</div>
+            <div>${esc(x.from||"?")} → <strong>${esc(x.to||"?")}</strong></div>
+            ${x.addedAt?`<div>Добавлена: <strong>${esc(formatDate(x.addedAt))}</strong></div>`:""}`;
+    }else if(x.type==="add"){
+      body=`<div class="history-add">${esc(x.detail||"Деталь")}</div>
+            <div>Ячейка: <strong>${esc(x.address||"?")}</strong></div>
+            ${x.addedAt?`<div>Добавлена: <strong>${esc(formatDate(x.addedAt))}</strong></div>`:""}`;
+    }else if(x.type==="remove"){
+      body=`<div class="history-remove">${esc(x.detail||"Деталь")}</div>
+            <div>Удалена из: <strong>${esc(x.address||"?")}</strong></div>`;
+    }else if(x.type==="edit"){
+      body=`<div>${esc(x.detail||"Изменено содержимое")}</div>
+            ${x.address?`<div>Ячейка: <strong>${esc(x.address)}</strong></div>`:""}`;
+    }else if(x.type==="import"){
+      body=`<div class="history-add">Excel: ${esc(x.detail||x.fileName||"файл")}</div>
+            <div>Ячеек: <strong>${Number(x.cellsCount||0)}</strong> · записей: <strong>${Number(x.itemsCount||0)}</strong></div>`;
+    }else if(x.type==="clear"){
+      body=`<div class="history-remove">Очищены обычные ячейки склада</div>
+            <div>Удалено ячеек: <strong>${Number(x.cellsCount||450)}</strong></div>`;
+    }else{
+      body=`<div>${esc(x.detail||"")}</div>`;
+    }
+
+    return `<div class="history-entry">
+      <div class="history-time">${esc(time)} · ${esc(title)} · ${esc(x.email||"неизвестно")}</div>
+      ${body}
+    </div>`;
+  }).join("");
+}
+
+async function openHistory(){
+  const modal=document.getElementById("historyModal");
+  const list=document.getElementById("historyList");
+  if(!modal||!list)return;
+
+  modal.style.display="flex";
+  list.innerHTML="Загрузка истории…";
+
+  try{
+    const snap=await rootRef.child("history")
+      .orderByChild("timestamp")
+      .limitToLast(500)
+      .once("value");
+
+    const raw=snap.val()||{};
+    window.__warehouseHistory=Object.values(raw)
+      .filter(Boolean)
+      .sort((a,b)=>Number(b.timestamp||0)-Number(a.timestamp||0));
+
+    renderHistory();
+  }catch(e){
+    console.error("Ошибка загрузки истории:",e);
+    list.innerHTML=`<div class="result">Не удалось загрузить историю.<br><small>${esc(e?.code||e?.message||e)}</small></div>`;
+  }
+}
+
+function closeHistory(){
+  const modal=document.getElementById("historyModal");
+  if(modal)modal.style.display="none";
+}
+
+function initHistoryUi(){
+  document.getElementById("historySearch")?.addEventListener("input",renderHistory);
+  document.getElementById("historyType")?.addEventListener("change",renderHistory);
+}
+
 function linesOf(value){return String(value||"").split(/\\r?\\n/).map(x=>x.trim()).filter(Boolean);}
 function metaFor(addr,line){
  const key=itemKey(addr,line);
@@ -513,49 +704,81 @@ function closeMoveModal(){
 }
 
 async function moveSelectedDetail(){
+  if(!canEdit()){
+    alert("Режим просмотра: редактирование доступно только владельцу.");
+    return;
+  }
   if(!current)return;
+
   const value=String(data[current.s][current.l][current.n]||"").trim();
   const lines=linesOf(value);
   const index=Number(document.getElementById("moveItem").value);
   const destinationRaw=document.getElementById("moveDestination").value.trim();
   const error=document.getElementById("moveError");
-  error.style.display="none"; error.textContent="";
+
+  error.style.display="none";
+  error.textContent="";
+
   if(!lines.length || !Number.isInteger(index) || !lines[index]){
-    error.textContent="В этой ячейке нет детали для перемещения."; error.style.display="block"; return;
+    error.textContent="В этой ячейке нет детали для перемещения.";
+    error.style.display="block";
+    return;
   }
+
   const parsed=parseExcelLocations(destinationRaw);
   if(parsed.length!==1){
-    error.textContent="Укажи одну конкретную ячейку, например S4-F-7."; error.style.display="block"; return;
+    error.textContent="Укажи одну конкретную ячейку, например S4-F-7.";
+    error.style.display="block";
+    return;
   }
+
   const dest=parsed[0];
   const sourceAddress=address(current.s,current.l,current.n);
   const destAddress=address(dest.s,dest.l,dest.n);
+
   if(sourceAddress===destAddress){
-    error.textContent="Новая ячейка совпадает с текущей."; error.style.display="block"; return;
+    error.textContent="Новая ячейка совпадает с текущей.";
+    error.style.display="block";
+    return;
   }
+
   const detail=lines[index];
   const destValue=String(data[dest.s][dest.l][String(dest.n)]||"").trim();
   const newSourceLines=lines.filter((_,i)=>i!==index);
   const newSourceValue=newSourceLines.join("\n");
   const newDestValue=destValue ? destValue+"\n"+detail : detail;
+
   const oldMeta=itemMeta[itemKey(sourceAddress,detail)]||{addedAt:null,updatedAt:null};
+
   try{
+    updateMetaAfterMove(sourceAddress,destAddress,detail);
+
     const updates={};
     updates["cells/"+current.s+"/"+current.l+"/"+current.n]=newSourceValue;
     updates["cells/"+dest.s+"/"+dest.l+"/"+dest.n]=newDestValue;
     updates["itemMeta"]=itemMeta;
+
     await rootRef.update(updates);
 
     data[current.s][current.l][current.n]=newSourceValue;
     data[dest.s][dest.l][String(dest.n)]=newDestValue;
-    updateMetaAfterMove(sourceAddress,destAddress,detail);
     setLocal();
+
     await writeHistory({
-      type:"move",detail,article:detail,from:sourceAddress,to:destAddress,addedAt:oldMeta.addedAt||null
+      type:"move",
+      detail,
+      article:detail,
+      from:sourceAddress,
+      to:destAddress,
+      addedAt:oldMeta.addedAt||null
     });
-    render(); doSearch();
+
+    render();
+    doSearch();
     setSync("📦 Деталь перемещена · история записана","ok");
-    closeMoveModal(); closeModal();
+    closeMoveModal();
+    closeModal();
+
     alert("Готово!\n\n"+detail+"\n\n"+sourceAddress+" → "+destAddress);
   }catch(e){
     console.error("Ошибка перемещения:",e);
@@ -565,44 +788,76 @@ async function moveSelectedDetail(){
   }
 }
 
+
 async function saveCell(){
- if(!current)return;
- const addr=address(current.s,current.l,current.n);
- const oldValue=String(data[current.s][current.l][current.n]||"").trim();
- const value=document.getElementById("content").value.trim();
- const changes=recordMetaChanges(addr,oldValue,value);
- const updates={};
- updates["cells/"+current.s+"/"+current.l+"/"+current.n]=value;
- updates["itemMeta"]=itemMeta;
- try{
-   await rootRef.update(updates);
-   data[current.s][current.l][current.n]=value;
-   setLocal();
-   if(changes.added.length){
-     for(const detail of changes.added){
-       await writeHistory({type:"add",detail,address:addr,addedAt:itemMeta[itemKey(addr,detail)]?.addedAt||nowTs()});
-     }
-   }
-   if(changes.removed.length){
-     for(const detail of changes.removed){
-       await writeHistory({type:"remove",detail,address:addr});
-     }
-   }
-   if(!changes.added.length && !changes.removed.length && oldValue!==value){
-     const ts=nowTs();
-     for(const line of linesOf(value)){
-       const key=itemKey(addr,line);
-       if(itemMeta[key])itemMeta[key].updatedAt=ts;
-     }
-     setLocal();
-     await writeHistory({type:"edit",detail:"Изменено содержимое ячейки",address:addr});
-   }
-   render();doSearch();setSync("☁️ Синхронизировано","ok");
- }catch(e){
-   setSync("⚠️ Ошибка синхронизации","err");console.error(e);
- }
- closeModal();
+  if(!canEdit()){
+    alert("Режим просмотра: редактирование доступно только владельцу.");
+    return;
+  }
+  if(!current)return;
+
+  const addr=address(current.s,current.l,current.n);
+  const oldValue=String(data[current.s][current.l][current.n]||"").trim();
+  const value=document.getElementById("content").value.trim();
+  const changes=recordMetaChanges(addr,oldValue,value);
+  const updates={};
+  updates["cells/"+current.s+"/"+current.l+"/"+current.n]=value;
+  updates["itemMeta"]=itemMeta;
+
+  try{
+    await rootRef.update(updates);
+
+    data[current.s][current.l][current.n]=value;
+    setLocal();
+
+    for(const detail of changes.added){
+      const meta=itemMeta[itemKey(addr,detail)]||{addedAt:nowTs(),updatedAt:null};
+      await writeHistory({
+        type:"add",
+        detail,
+        article:detail,
+        address:addr,
+        addedAt:meta.addedAt
+      });
+    }
+
+    for(const detail of changes.removed){
+      await writeHistory({
+        type:"remove",
+        detail,
+        article:detail,
+        address:addr
+      });
+    }
+
+    if(!changes.added.length && !changes.removed.length && oldValue!==value){
+      const ts=nowTs();
+      for(const line of linesOf(value)){
+        const key=itemKey(addr,line);
+        if(itemMeta[key])itemMeta[key].updatedAt=ts;
+      }
+      await rootRef.child("itemMeta").set(itemMeta);
+      setLocal();
+
+      await writeHistory({
+        type:"edit",
+        detail:"Изменено содержимое ячейки",
+        address:addr,
+        oldValue,
+        newValue:value
+      });
+    }
+
+    render();
+    doSearch();
+    setSync("☁️ Синхронизировано · история записана","ok");
+  }catch(e){
+    console.error(e);
+    setSync("⚠️ Ошибка синхронизации","err");
+  }
+  closeModal();
 }
+
 
 function openSpecial(type){
  currentSpecial=type;document.getElementById("specialTitle").textContent=type==="resale"?"Перекупной товар":"Брак";
@@ -612,56 +867,96 @@ function openSpecial(type){
 }
 function closeSpecial(){document.getElementById("specialModal").style.display="none";currentSpecial=null}
 async function saveSpecial(){
- if(!currentSpecial)return;
- const value=document.getElementById("specialContent").value.trim();specialData[currentSpecial]=value;setLocal();renderSpecial();doSearch();
- try{await rootRef.child("special").child(currentSpecial).set(value);setSync("☁️ Синхронизировано","ok");}
- catch(e){setSync("⚠️ Ошибка синхронизации","err");console.error(e)}
- closeSpecial();
+  if(!canEdit()){
+    alert("Режим просмотра: редактирование доступно только владельцу.");
+    return;
+  }
+  if(!currentSpecial)return;
+
+  const value=document.getElementById("specialContent").value.trim();
+  const oldValue=specialData[currentSpecial]||"";
+  specialData[currentSpecial]=value;
+
+  try{
+    await rootRef.child("special").child(currentSpecial).set(value);
+    setLocal();
+
+    if(oldValue!==value){
+      await writeHistory({
+        type:"edit",
+        detail:currentSpecial==="resale"?"Перекупной товар":"Брак",
+        address:currentSpecial
+      });
+    }
+
+    renderSpecial();
+    doSearch();
+    setSync("☁️ Синхронизировано · история записана","ok");
+  }catch(e){
+    console.error(e);
+    setSync("⚠️ Ошибка синхронизации","err");
+  }
+  closeSpecial();
 }
+
+
 function renderSpecial(){
  for(const [type,id,preview] of [["resale","resaleCell","resalePreview"],["defect","defectCell","defectPreview"]]){
   const v=specialData[type]||"";document.getElementById(id).classList.toggle("filled",!!v);document.getElementById(preview).textContent=v;
  }
 }
 async function temporaryClearWarehouse(){
-  const first = confirm(
-    "⚠️ ВРЕМЕННАЯ КНОПКА\n\n" +
-    "Удалить содержимое всех 450 обычных ячеек склада?\n\n" +
+  if(!canEdit()){
+    alert("Режим просмотра: очистка доступна только владельцу.");
+    return;
+  }
+
+  const first=confirm(
+    "⚠️ ВРЕМЕННАЯ КНОПКА\n\n"+
+    "Удалить содержимое всех 450 обычных ячеек склада?\n\n"+
     "После этого можно будет загрузить новый Excel."
   );
   if(!first)return;
 
-  const second = confirm(
-    "Точно очистить ВСЕ 450 ячеек?\n\n" +
-    "Это действие удалит данные из Firebase."
+  const second=confirm(
+    "Точно очистить ВСЕ 450 ячеек?\n\n"+
+    "История при этом сохранится."
   );
   if(!second)return;
 
   try{
     const emptyCells=createEmptyData();
+    const oldCount=Object.values(data)
+      .flatMap(st=>Object.values(st))
+      .flatMap(sh=>Object.values(sh))
+      .filter(v=>String(v||"").trim()).length;
 
-    // Сначала очищаем Firebase.
-    await rootRef.child("cells").set(emptyCells);
-    await rootRef.child("itemMeta").set({});
-
-    // Локальное состояние обновляем только после успешной записи.
-    data=emptyCells;
     itemMeta={};
+    await rootRef.update({
+      cells:emptyCells,
+      itemMeta:{}
+    });
+
+    data=emptyCells;
     setLocal();
+    await writeHistory({
+      type:"clear",
+      detail:"Полная очистка обычных ячеек склада",
+      cellsCount:450,
+      itemsCount:oldCount
+    });
+
     render();
     doSearch();
-
-    setSync("🗑️ Склад очищен","ok");
-    alert("Готово! Все 450 обычных ячеек очищены.\n\n«Перекупной товар» и «Брак» не затронуты.");
+    setSync("🗑️ Склад очищен · история сохранена","ok");
+    alert("Готово! Все 450 обычных ячеек очищены.\n\nИстория изменений сохранена.");
   }catch(e){
     console.error("Ошибка очистки склада:",e);
     setSync("⚠️ Ошибка очистки","err");
-    alert(
-      "Не удалось очистить склад.\n\n" +
-      (e?.code||e?.message||e)
-    );
+    alert("Не удалось очистить склад.\n\n"+(e?.code||e?.message||e));
   }
 }
+
 
 async function clearAll(){
  if(!confirm("Удалить содержимое всех видимых 450 ячеек?"))return;
@@ -1390,6 +1685,7 @@ async function importExcelFile(file){
       }
 
       setLocal();
+      await rootRef.child("itemMeta").set(itemMeta);
       await writeHistory({type:"import",detail:file.name,cellsCount:validAddresses.length,itemsCount:locationCount});
       render();
       doSearch();
@@ -1493,77 +1789,64 @@ function renderMiniMap(found=[]){
 
   root.innerHTML="";
 
-  const unique=[];
-  const seen=new Set();
+  // Подсвечиваем только найденные места в центре прохода.
+  // Никаких горизонтальных/вертикальных палочек — только мягкое свечение.
+  const groups=new Map();
 
   for(const x of (found||[])){
     if(x.special || !x.s || !x.l || !x.n)continue;
 
     const s=Number(String(x.s).replace("S",""));
     const n=Number(x.n);
+    if(!planMap.aisleX[s] || !Number.isFinite(n))continue;
 
-    if(!planMap.aisleX[s])continue;
-
-    const y=n<=3 ? planMap.shortY[n] : planMap.longY[n];
-    if(y===undefined)continue;
-
-    const key=`S${s}-${x.l}-${n}`;
-    if(seen.has(key))continue;
-
-    seen.add(key);
-    unique.push({s,l:x.l,n,key});
-  }
-
-  if(!unique.length){
-    if(legend){
-      legend.textContent="При поиске индикатор появится в проходе S1–S5 и покажет нужную часть стеллажа";
+    const key=`${s}-${x.l}-${n}`;
+    if(!groups.has(key)){
+      groups.set(key,{s,l:x.l,n});
     }
-    return;
   }
 
-  for(const item of unique){
-    const x=planMap.aisleX[item.s];
-    const y=item.n<=3 ? planMap.shortY[item.n] : planMap.longY[item.n];
-    const p=planPercent(x,y);
+  for(const g of groups.values()){
+    const x=planMap.aisleX[g.s];
+
+    // Координата по вертикали: 4–10 сверху, 1–3 снизу.
+    let top;
+    if(g.n>=4){
+      // 4 = низ верхней секции, 10 = её верх.
+      top = 335 - ((g.n-4)/6)*247;
+    }else{
+      // 1–3 = нижняя секция.
+      top = 670 - ((g.n-1)/2)*165;
+    }
+
+    const p=planPercent(x,top);
 
     const marker=document.createElement("div");
     marker.className="plan-marker";
     marker.style.left=p.left+"%";
     marker.style.top=p.top+"%";
-    marker.title=`${item.key} — открыть ячейку`;
-    marker.onclick=()=>openPlanCell(item.s,item.l,item.n);
 
-    const badge=document.createElement("div");
-    badge.className="plan-badge";
+    const highlight=document.createElement("div");
+    highlight.className="plan-aisle-highlight";
 
-    const isLeft=leftLetters.includes(item.l);
-    const arrow=document.createElement("span");
-    arrow.className="plan-side-arrow";
-    arrow.textContent=isLeft ? "◀" : "▶";
+    const label=document.createElement("div");
+    label.className="plan-aisle-label";
+    label.textContent=`${g.l}${g.n}`;
 
-    const label=document.createElement("span");
-    label.textContent=`${item.l}${item.n}`;
+    highlight.title=`S${g.s}-${g.l}-${g.n}`;
+    highlight.style.pointerEvents="auto";
+    highlight.onclick=()=>openPlanCell(`S${g.s}`,g.l,String(g.n));
 
-    badge.appendChild(arrow);
-    badge.appendChild(label);
-
-    // Коннектор в сторону нужной стойки.
-    const connector=document.createElement("div");
-    connector.className="plan-connector";
-
-    // На схеме стойки находятся по обе стороны прохода примерно на 55 px.
-    const dx=isLeft ? -56 : 56;
-    const length=Math.abs(dx);
-    connector.style.width=length+"px";
-    connector.style.transform=`rotate(${isLeft?180:0}deg)`;
-
-    marker.appendChild(connector);
-    marker.appendChild(badge);
+    highlight.appendChild(label);
+    marker.appendChild(highlight);
     root.appendChild(marker);
   }
 
   if(legend){
-    legend.textContent=`🔶 Найдено: ${unique.length} ${unique.length===1?"ячейка":"ячеек"} · индикаторы стоят в проходах`;
+    const total=groups.size;
+    legend.textContent=total
+      ? `✨ Подсвечено мест: ${total}`
+      : "При поиске найденные ячейки будут мягко подсвечиваться на плане";
   }
 }
 
@@ -1649,7 +1932,12 @@ function doSearch(){
   renderMiniMap(found);
 }
 
-document.getElementById("search").addEventListener("input",()=>{render();doSearch()});
+document.getElementById("search").addEventListener("input",()=>{
+  // Поиск работает только по уже загруженному в память data.
+  // Firebase write/read здесь вообще не вызывается.
+  render();
+  doSearch();
+});
 
 rootRef.on("value",async snap=>{
  const remote=snap.val();
@@ -1660,15 +1948,23 @@ rootRef.on("value",async snap=>{
    const localM=JSON.parse(localStorage.getItem("warehouseItemMeta")||"null");
    data=normalizeData(localD);specialData=localS||{resale:"",defect:""};itemMeta=normalizeMeta(localM);
    setLocal();render();doSearch();
-   try{await rootRef.set({cells:data,special:specialData,itemMeta:itemMeta});setSync("☁️ Данные ПК перенесены в Firebase","ok");}
-   catch(e){setSync("⚠️ Нет записи в Firebase","err");}
+   if(canEdit()){
+    try{
+      await rootRef.set({cells:data,special:specialData,itemMeta:itemMeta});
+      setSync("☁️ Данные ПК перенесены в Firebase","ok");
+    }catch(e){
+      setSync("⚠️ Нет записи в Firebase","err");
+    }
+  }else{
+    setSync("👁️ Режим просмотра","ok");
+  }
   }else{data=createEmptyData();specialData={resale:"",defect:""};itemMeta={};setLocal();render();doSearch();setSync("☁️ Firebase подключён","ok")}
   remoteLoaded=true;return;
  }
  data=normalizeData(remote.cells);specialData=remote.special||{resale:"",defect:""};itemMeta=normalizeMeta(remote.itemMeta);setLocal();remoteLoaded=true;render();doSearch();setSync("☁️ Синхронизировано","ok");
 },err=>{setSync("⚠️ Ошибка Firebase","err");console.error(err)});
 
-render();renderSpecial();renderMiniMap([]);
+render();renderSpecial();renderMiniMap([]);initHistoryUi();setAccessUi();
 </script>
 </body>
 </html>
