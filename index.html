@@ -137,6 +137,7 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
 <div class="toolbar">
 <input id="search" type="search" placeholder="🔎 Поиск детали, артикула или адреса…" style="width:100%;min-width:0">
 <button class="primary" onclick="document.getElementById('excelFile').click()">📥 Загрузить Excel</button>
+<button onclick="temporaryClearWarehouse()" style="background:#fee2e2;color:#991b1b;border-color:#fca5a5">🗑️ Очистить склад</button>
 <input id="excelFile" type="file" accept=".xlsx,.xls" style="display:none">
 </div>
 </header>
@@ -314,6 +315,44 @@ function renderSpecial(){
   const v=specialData[type]||"";document.getElementById(id).classList.toggle("filled",!!v);document.getElementById(preview).textContent=v;
  }
 }
+async function temporaryClearWarehouse(){
+  const first = confirm(
+    "⚠️ ВРЕМЕННАЯ КНОПКА\n\n" +
+    "Удалить содержимое всех 450 обычных ячеек склада?\n\n" +
+    "После этого можно будет загрузить новый Excel."
+  );
+  if(!first)return;
+
+  const second = confirm(
+    "Точно очистить ВСЕ 450 ячеек?\n\n" +
+    "Это действие удалит данные из Firebase."
+  );
+  if(!second)return;
+
+  try{
+    const emptyCells=createEmptyData();
+
+    // Сначала очищаем Firebase.
+    await rootRef.child("cells").set(emptyCells);
+
+    // Локальное состояние обновляем только после успешной записи.
+    data=emptyCells;
+    setLocal();
+    render();
+    doSearch();
+
+    setSync("🗑️ Склад очищен","ok");
+    alert("Готово! Все 450 обычных ячеек очищены.\n\n«Перекупной товар» и «Брак» не затронуты.");
+  }catch(e){
+    console.error("Ошибка очистки склада:",e);
+    setSync("⚠️ Ошибка очистки","err");
+    alert(
+      "Не удалось очистить склад.\n\n" +
+      (e?.code||e?.message||e)
+    );
+  }
+}
+
 async function clearAll(){
  if(!confirm("Удалить содержимое всех видимых 450 ячеек?"))return;
  data=createEmptyData();specialData={resale:"",defect:""};setLocal();render();doSearch();
@@ -549,10 +588,50 @@ const partCodeTypes={
   "7":["бампер","задний бампер","rear bumper","bumper"]
 };
 
+function isArticleLikeToken(token){
+  const compact=normalizeSearchText(token).replace(/[^a-z0-9]/g,"");
+  // Артикулы/коды вроде mz0903, apmz0903, 27c103, 81b103-j.
+  // Для них нельзя использовать агрессивный fuzzy-поиск:
+  // mz0903 не должен совпадать с mz0203c только из-за похожих цифр.
+  return /^(?=.*[a-z])(?=.*\\d)[a-z0-9]+$/.test(compact) && compact.length>=4;
+}
+
+function articleTokenMatchesText(token,text){
+  const q=normalizeSearchText(token).replace(/[^a-z0-9]/g,"");
+  if(!q)return false;
+
+  const normalized=normalizeSearchText(text);
+  const words=normalized
+    .split(/[^a-z0-9]+/)
+    .map(x=>x.trim())
+    .filter(Boolean);
+
+  // Сначала строгое совпадение / вхождение.
+  // Это позволяет mz0903 найти APMZ0903, но не mz0203c.
+  if(words.some(w=>w===q || w.includes(q) || q.includes(w))) return true;
+
+  // Разрешаем ровно одну опечатку только для достаточно длинного кода.
+  // При этом сравниваем именно код, а не отдельные цифры в конце.
+  if(q.length>=5){
+    for(const w of words){
+      if(Math.abs(w.length-q.length)>1)continue;
+      if(levenshtein(q,w)<=1)return true;
+    }
+  }
+
+  return false;
+}
+
 function queryTokenMatchesText(token,text){
   const normalized=normalizeSearchText(text);
   const textTokens=normalized.split(/\s+/).filter(Boolean);
   const compact=normalized.replace(/\s+/g,"");
+
+  // Важный приоритет: если пользователь ввёл артикул/код,
+  // не применяем общий fuzzy-поиск по 2-3 случайным цифрам.
+  if(isArticleLikeToken(token)){
+    return articleTokenMatchesText(token,text);
+  }
 
   for(const variant of expandSearchToken(token)){
     if(!variant)continue;
@@ -967,12 +1046,27 @@ function doSearch(){
       for(let n=1;n<=10;n++){
         const v=data["S"+s][l][String(n)]||"";
         const a=address("S"+s,l,n);
-        const searchable=`${a} ${v}`;
 
-        const score=searchScore(queryTokens,searchable);
+        // Проверяем каждую запись внутри ячейки отдельно.
+        // Например, запрос mz0903 должен показать только APMZ0903,
+        // а не соседний APMZ0203C из той же ячейки.
+        const lines=String(v).split(/\\r?\\n/).map(x=>x.trim()).filter(Boolean);
+        const matchedLines=lines
+          .map(line=>({line,score:searchScore(queryTokens,line)}))
+          .filter(x=>x.score>0);
+
+        // Если ищем именно адрес, показываем всю ячейку.
+        const addressMatch=queryTokenMatchesText(raw,a);
+        const score=matchedLines.length
+          ? Math.max(...matchedLines.map(x=>x.score))
+          : (addressMatch ? 200 : 0);
 
         if(score>0){
-          found.push({a,v,s:"S"+s,l,n:String(n),score});
+          found.push({
+            a,v,
+            matchedLines:matchedLines.map(x=>x.line),
+            s:"S"+s,l,n:String(n),score
+          });
         }
       }
     }
@@ -1004,7 +1098,9 @@ function doSearch(){
          </div>`
       : `<div class="result" onclick="openModal('${x.s}','${x.l}','${x.n}')">
            <strong>${esc(x.a)}</strong>
-           <span class="article">${esc(x.v||"пусто")}</span>
+           <span class="article">${esc(
+             x.matchedLines?.length ? x.matchedLines.join("\n") : (x.v||"пусто")
+           ).replace(/\n/g,"<br>")}</span>
          </div>`
     ).join("");
 }
