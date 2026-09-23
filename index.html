@@ -1183,17 +1183,40 @@ function searchPartMatch(part,text){
 }
 
 function searchBrandMatch(brand,text){
-  // Сначала ищем марку непосредственно во всей информации ячейки:
-  // описание, артикул, дополнительные строки и адрес.
-  if(expandSearchToken(brand).some(v=>v && fuzzyTokenMatch(v,text)))return true;
+  // Для марки автомобиля используем строгое совпадение.
+  // Нечёткий поиск коротких кодов вроде MZ давал ложные результаты.
+  const normalized=normalizeSearchText(text);
+  const aliases=(searchAliases[brand]||[brand]).map(normalizeSearchText);
 
-  // Запасной вариант для складского артикула AP + код марки.
-  const brandAliases=(searchAliases[brand]||[brand]).map(normalizeSearchText);
-  const raw=String(text||"").toUpperCase();
-  return brandAliases.some(alias=>{
-    const compact=alias.replace(/\s+/g,"");
-    return compact.length<=4 && new RegExp("AP"+compact+"\\d+","i").test(raw);
-  });
+  // Название марки должно реально присутствовать в содержимом ячейки.
+  for(const alias of aliases){
+    if(alias.length>=4 && normalized.includes(alias))return true;
+  }
+
+  // Короткий код марки разрешён только внутри складского артикула AP+код.
+  const brandCodes={
+    "мазда":"MZ","хонда":"HD","тойота":"TY","ниссан":"NS",
+    "форд":"FD","ауди":"AU","бмв":"BM","фольксваген":"VW",
+    "шевроле":"CH","мерседес":"MB","лексус":"LX","инфинити":"INF",
+    "акура":"AC","субару":"SU","митсубиси":"MI","сузуки":"SZ",
+    "исузу":"IZ","дайхатсу":"DH","киа":"KI","хендай":"HY",
+    "генезис":"GN","дэу":"DW","рено":"RE","пежо":"PG",
+    "ситроен":"CT","фиат":"FT","вольво":"VO","сааб":"SA",
+    "ягуар":"JG","ланд ровер":"LR","ровер":"RV","джип":"JP",
+    "додж":"DG","крайслер":"CH","кадиллак":"CA","линкольн":"LN",
+    "бьюик":"BK","понтиак":"PT","саат":"ST","шкода":"SK",
+    "опель":"OP","порше":"PR","бентли":"BE","масерати":"MA",
+    "ламборгини":"LM","феррари":"FR","тесла":"TS","мини":"MN",
+    "мг":"MG","лада":"LA","ваз":"VA","газ":"GA","уаз":"UA"
+  };
+
+  const code=brandCodes[brand];
+  if(code){
+    const raw=String(text||"").toUpperCase();
+    if(new RegExp("(?:^|[^A-ZА-Я0-9])AP"+code+"[A-ZА-Я0-9-]*", "i").test(raw))return true;
+  }
+
+  return false;
 }
 
 function searchScore(queryTokens,text){
