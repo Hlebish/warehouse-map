@@ -136,8 +136,8 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
 <div class="sub">Адрес: улица (S1–S5) → полка (A–E слева / F–K справа)</div>
 <div class="toolbar">
 <input id="search" type="search" placeholder="🔎 Поиск детали, артикула или адреса…" style="width:100%;min-width:0">
-<button class="primary" onclick="exportData()">Экспорт</button>
-<button onclick="importData()">Импорт</button>
+<button class="primary" onclick="document.getElementById('excelFile').click()">📥 Загрузить Excel</button>
+<input id="excelFile" type="file" accept=".xlsx,.xls" style="display:none">
 </div>
 </header>
 <main>
@@ -169,6 +169,7 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
 <div class="actions"><button onclick="closeModal()">Отмена</button><button class="primary" onclick="saveCell()">Сохранить</button></div>
 </div></div>
 
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/firebase@9.23.0/firebase-app-compat.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/firebase@9.23.0/firebase-database-compat.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/firebase@9.23.0/firebase-auth-compat.js"></script>
@@ -353,7 +354,6 @@ function searchTokens(value){
     .split(/\s+/)
     .filter(Boolean);
 }
-  
 const searchAliases={
   "капот":["капот","hood","bonnet"],
   "крыло":["крыло","wing"],
@@ -657,6 +657,149 @@ function searchScore(queryTokens,text){
 
   return score;
 }
+
+function parseExcelLocations(value){
+  const result=[];
+  const text=String(value||"").replace(/[()]/g," ");
+  const groupRe=/S([1-5])\s*,?\s*([A-Z](?:\s*\d+)?(?:\s*,\s*[A-Z]\s*\d+)*)/gi;
+  const cellRe=/([A-Z])\s*(\d+)/gi;
+  const allowedLetters=new Set([...leftLetters,...rightLetters]);
+
+  for(const match of text.matchAll(groupRe)){
+    const street="S"+match[1];
+    for(const cell of match[2].matchAll(cellRe)){
+      const letter=cell[1].toUpperCase();
+      const num=Number(cell[2]);
+      if(allowedLetters.has(letter) && num>=1 && num<=10){
+        result.push(`${street}-${letter}-${num}`);
+      }
+    }
+  }
+  return [...new Set(result)];
+}
+
+function excelCellText(value){
+  if(value===null || value===undefined)return "";
+  return String(value).trim();
+}
+
+async function importExcelFile(file){
+  if(!file)return;
+
+  if(typeof XLSX==="undefined"){
+    alert("Не удалось загрузить модуль Excel. Обнови страницу и попробуй ещё раз.");
+    return;
+  }
+
+  const buffer=await file.arrayBuffer();
+  const workbook=XLSX.read(buffer,{type:"array"});
+  const sheet=workbook.Sheets[workbook.SheetNames[0]];
+  const rows=XLSX.utils.sheet_to_json(sheet,{header:1,defval:"",raw:false});
+
+  const imported={};
+  const skipped=[];
+  let rowCount=0;
+  let locationCount=0;
+
+  for(let i=0;i<rows.length;i++){
+    const row=rows[i]||[];
+    const description=excelCellText(row[1]);
+    const article=excelCellText(row[2]);
+    const location=excelCellText(row[3]);
+
+    if(!description && !article && !location)continue;
+    rowCount++;
+
+    // Формат твоей выгрузки 1С:
+    // B = наименование, C = артикул, D = адрес хранения.
+    if(!article || !location){
+      skipped.push({row:i+1,reason:"нет артикула или адреса"});
+      continue;
+    }
+
+    const locations=parseExcelLocations(location);
+
+    if(!locations.length){
+      skipped.push({row:i+1,reason:`адрес не распознан: ${location}`});
+      continue;
+    }
+
+    const content=description
+      ? `${article} — ${description}`
+      : article;
+
+    for(const addr of locations){
+      if(!imported[addr])imported[addr]=[];
+      if(!imported[addr].includes(content)){
+        imported[addr].push(content);
+        locationCount++;
+      }
+    }
+  }
+
+  const addresses=Object.keys(imported);
+
+  if(!addresses.length){
+    alert("В Excel не найдено ни одной подходящей ячейки склада. Проверь столбец с адресом.");
+    return;
+  }
+
+  const preview=addresses.slice(0,12).map(addr=>{
+    const items=imported[addr].join("\\n");
+    return `${addr}\\n${items}`;
+  }).join("\\n\\n");
+
+  const more=addresses.length>12?`\\n\\n…и ещё ${addresses.length-12} ячеек.`:"";
+  const ok=confirm(
+    `Excel: ${file.name}\\n\\n`+
+    `Строк с данными: ${rowCount}\\n`+
+    `Ячеек для заполнения: ${addresses.length}\\n`+
+    `Записей: ${locationCount}\\n`+
+    `Пропущено строк: ${skipped.length}\\n\\n`+
+    `Пример:\\n${preview}${more}\\n\\n`+
+    `Продолжить?`
+  );
+
+  if(!ok)return;
+
+  // Меняем только ячейки, которые пришли из Excel.
+  for(const addr of addresses){
+    const match=addr.match(/^S([1-5])-([A-K])-(\\d+)$/);
+    if(!match)continue;
+
+    const [,s,l,n]=match;
+    data[`S${s}`][l][n]=imported[addr].join("\\n");
+  }
+
+  setLocal();
+  render();
+  doSearch();
+
+  try{
+    await rootRef.set({cells:data,special:specialData});
+    setSync(`☁️ Excel загружен: ${addresses.length} ячеек`,"ok");
+  }catch(e){
+    setSync("⚠️ Excel загружен локально, но Firebase не принял запись","err");
+    console.error(e);
+    alert("Данные загрузились в эту страницу, но Firebase отклонил запись. Проверь права доступа.");
+  }
+
+  if(skipped.length){
+    console.warn("Пропущенные строки Excel:",skipped);
+  }
+}
+
+document.getElementById("excelFile").addEventListener("change",async e=>{
+  const file=e.target.files?.[0];
+  e.target.value="";
+  try{
+    await importExcelFile(file);
+  }catch(err){
+    console.error(err);
+    alert("Ошибка чтения Excel: "+err.message);
+  }
+});
+
 function doSearch(){
   const raw=document.getElementById("search").value.trim();
   const out=document.getElementById("results");
