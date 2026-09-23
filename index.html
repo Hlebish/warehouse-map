@@ -598,21 +598,20 @@ function normalizeData(d){
  }
  return out;
 }
-function safeFirebaseKey(value){
-  // Firebase Realtime Database forbids . # $ / [ ] in object keys.
-  // Encode them only for the technical key; visible Excel text is never changed.
-  return String(value??"").replace(/[.#$\/\[\]]/g,ch=>({
+function itemKey(addr,line){
+  // Firebase Realtime Database forbids . # $ / [ ] inside object keys.
+  // Keep normal keys unchanged, but safely encode only forbidden characters
+  // so Excel descriptions like "LE/XLE" or "отв. тум." can be imported.
+  const safeLine=String(line||"").trim().replace(/[.#$\/\[\]]/g,ch=>({
     ".":"%2E","#":"%23","$":"%24","/":"%2F","[":"%5B","]":"%5D"
   })[ch]);
-}
-function itemKey(addr,line){
-  return safeFirebaseKey(addr+"|"+String(line||"").trim());
+  return addr+"|"+safeLine;
 }
 function normalizeMeta(m){
  const out={};
  if(m && typeof m==="object"){
    for(const [k,v] of Object.entries(m)){
-     if(v && typeof v==="object") out[safeFirebaseKey(k)]={addedAt:v.addedAt||null,updatedAt:v.updatedAt||null};
+     if(v && typeof v==="object") out[k]={addedAt:v.addedAt||null,updatedAt:v.updatedAt||null};
    }
  }
  return out;
@@ -1946,110 +1945,99 @@ async function importExcelFile(file){
     }
 
     try{
-      // Best-effort import: one bad record must not block the rest.
-      const failedItems=[];
-      const savedAddresses=[];
-      const cellUpdates={};
-      for(const [path,value] of Object.entries(patch)) cellUpdates[`cells/${path}`]=value;
+      // Excel + история записываются одним атомарным обновлением Firebase.
+      const historyKey = rootRef.child("history").push().key;
+      if(!historyKey) throw new Error("Не удалось создать ключ истории");
 
-      // First save cells only. If the batch fails, retry one cell at a time.
-      try{
-        await rootRef.update(cellUpdates);
-        savedAddresses.push(...validAddresses);
-      }catch(bulkErr){
-        console.warn("Пакетный импорт Excel не прошёл, пробуем по ячейкам:",bulkErr);
-        for(const addr of validAddresses){
-          const match=addr.match(/^S([1-5])-([A-K])-(\d+)$/);
-          if(!match)continue;
-          const [,s,l,n]=match;
-          const value=imported[addr].join("\n");
-          try{
-            await rootRef.update({[`cells/S${s}/${l}/${n}`]:value});
-            savedAddresses.push(addr);
-          }catch(cellErr){
-            failedItems.push({address:addr,article:imported[addr].join("\n"),reason:String(cellErr?.message||cellErr||"ошибка записи")});
-          }
+      const historyEvent = {
+        type:"import",
+        detail:`Импорт Excel: ${file.name}`,
+        fileName:file.name,
+        cellsCount:validAddresses.length,
+        itemsCount:locationCount,
+        addresses:validAddresses.slice(0,200),
+        email:currentUserEmail(),
+        timestamp:firebase.database.ServerValue.TIMESTAMP
+      };
+
+      // Готовим itemMeta отдельно и добавляем его в тот же atomic update.
+      // Так Excel, история и метаданные либо сохраняются вместе, либо Firebase
+      // отклоняет весь пакет — без частично применённого импорта.
+      const nextMeta={...itemMeta};
+      const ts=nowTs();
+
+      for(const addr of validAddresses){
+        const importedValue=imported[addr].join("\n");
+        for(const detail of linesOf(importedValue)){
+          const key=itemKey(addr,detail);
+          if(!nextMeta[key]) nextMeta[key]={addedAt:ts,updatedAt:null};
         }
       }
 
-      // Metadata is written separately with safe Firebase keys. Even if it fails,
-      // the successfully imported cells remain on the map.
-      let metaSaved=true, metaError="";
-      try{
-        const nextMeta=normalizeMeta(itemMeta);
-        const ts=nowTs();
-        for(const addr of savedAddresses){
-          for(const detail of linesOf(imported[addr].join("\n"))){
-            const key=itemKey(addr,detail);
-            if(!nextMeta[key]) nextMeta[key]={addedAt:ts,updatedAt:null};
-          }
-        }
-        await rootRef.child("itemMeta").set(nextMeta);
-        itemMeta=nextMeta;
-      }catch(metaErr){
-        metaSaved=false;
-        metaError=String(metaErr?.message||metaErr||"ошибка metadata");
-        console.warn("Metadata Excel не сохранены, но ячейки уже импортированы:",metaErr);
+      const updates = {};
+      for(const [path,value] of Object.entries(patch)){
+        updates[`cells/${path}`]=value;
       }
+      updates["itemMeta"]=nextMeta;
+      updates[`history/${historyKey}`]=historyEvent;
 
-      // Journal: successful cells, skipped Excel rows, and actual failed records.
-      const historyKey=rootRef.child("history").push().key;
-      if(historyKey){
-        await rootRef.child("history").child(historyKey).set({
-          type:"import",
-          detail:`Импорт Excel: ${file.name}`,
-          fileName:file.name,
-          cellsCount:savedAddresses.length,
-          itemsCount:locationCount,
-          addresses:savedAddresses.slice(0,200),
-          skippedRows:skipped.slice(0,200),
-          failedItems:failedItems.slice(0,200),
-          metadataSaved:metaSaved,
-          metadataError:metaSaved?null:metaError,
-          email:currentUserEmail(),
-          timestamp:firebase.database.ServerValue.TIMESTAMP
-        });
-      }
+      await rootRef.update(updates);
+      console.log("Импорт Excel, itemMeta и история сохранены:", historyKey);
 
-      for(const addr of savedAddresses){
+      // Только после успешного Firebase update меняем локальное состояние.
+      itemMeta=nextMeta;
+      for(const addr of validAddresses){
         const match=addr.match(/^S([1-5])-([A-K])-(\d+)$/);
         const [,s,l,n]=match;
         data[`S${s}`][l][n]=imported[addr].join("\n");
       }
+
       setLocal();
       render();
       doSearch();
 
-      const problemCount=failedItems.length+skipped.length;
-      setSync(`☁️ Excel: ${savedAddresses.length} ячеек загружено${problemCount?` · ${problemCount} проблемных строк`:""}`,problemCount?"err":"ok");
-      if(document.getElementById("historyModal")?.style.display==="flex") await openHistory();
+      setSync(`☁️ Excel загружен: ${validAddresses.length} ячеек · история записана`,"ok");
 
-      const failedHtml=failedItems.length
-        ? `<div class="excel-section"><div class="excel-section-title">❌ Не удалось добавить</div><div class="excel-error">${failedItems.slice(0,20).map(x=>`<strong>${excelEsc(x.address)}</strong> — ${excelEsc(x.article)}<br><small>${excelEsc(x.reason)}</small>`).join("<br><br>")}${failedItems.length>20?`<br>…и ещё ${failedItems.length-20}.`:""}</div></div>` : "";
-      const skippedHtml=skipped.length
-        ? `<div class="excel-section"><div class="excel-section-title">⚠️ Пропущено при чтении Excel</div><div class="excel-warn">${skipped.slice(0,20).map(x=>`Строка ${excelEsc(x.row)} — ${excelEsc(x.reason)}`).join("<br>")}${skipped.length>20?`<br>…и ещё ${skipped.length-20}.`:""}</div></div>` : "";
-      const metaHtml=!metaSaved
-        ? `<div class="excel-error" style="margin-top:10px">⚠️ Ячейки сохранены, но служебные метаданные не записались. Ошибка: ${excelEsc(metaError)}</div>` : "";
+      // Если окно истории уже открыто — сразу обновляем его.
+      if(document.getElementById("historyModal")?.style.display==="flex"){
+        await openHistory();
+      }
 
-      await showExcelMessage({
-        title:problemCount?"Импорт завершён с пропусками":"Импорт завершён",
-        icon:problemCount?"⚠️":"✓",
-        iconClass:problemCount?"excel-error-icon":"excel-success-icon",
-        fileName:`📄 ${file.name}`,
-        body:`<div class="excel-stats"><div class="excel-stat"><b>${savedAddresses.length}</b><span>загружено ячеек</span></div><div class="excel-stat"><b>${locationCount}</b><span>записей в Excel</span></div><div class="excel-stat"><b>${failedItems.length}</b><span>ошибок записи</span></div><div class="excel-stat"><b>${skipped.length}</b><span>пропущено строк</span></div></div>${failedHtml}${skippedHtml}${metaHtml}`
-      });
-      return;
+      await showExcelMessage({title:"Импорт завершён",icon:"✓",iconClass:"excel-success-icon",fileName:`📄 ${file.name}`,body:`<div class="excel-stats"><div class="excel-stat"><b>${validAddresses.length}</b><span>загружено ячеек</span></div><div class="excel-stat"><b>${locationCount}</b><span>записей</span></div><div class="excel-stat"><b>${skipped.length}</b><span>пропущено строк</span></div></div><div class="excel-warn" style="background:${skipped.length?"#fff8e7":"#edf9f0"};border-color:${skipped.length?"#f2d38a":"#b8dfc0"};color:${skipped.length?"#805b00":"#2e6b3b"}">${skipped.length?`⚠️ Импорт выполнен, но ${skipped.length} строк не были загружены.`:"✓ Все строки с адресами обработаны."}</div>`});
 
     }catch(e){
       console.error("Excel import Firebase error:",e);
+
       const errorCode=String(e?.code||"").trim();
       const errorMessage=String(e?.message||e||"Неизвестная ошибка").trim();
       const errorLabel=errorCode || "UNKNOWN_ERROR";
-      const permissionHint=errorCode==="PERMISSION_DENIED" ? `<br><br><strong>Firebase отклонил запись.</strong> Проверь, что выполнен вход владельцем и правила Realtime Database разрешают запись для этого аккаунта.` : errorCode==="UNAUTHENTICATED" ? `<br><br><strong>Пользователь не авторизован.</strong> Войди через Google и повтори импорт.` : "";
-      setSync(`⚠️ Ошибка Excel: ${errorLabel}`,"err");
-      await showExcelMessage({title:"Не удалось сохранить Excel",icon:"⚠️",iconClass:"excel-error-icon",body:`<div class="excel-error"><strong>Не удалось сохранить импорт.</strong><br><br>Код ошибки: <strong>${excelEsc(errorLabel)}</strong><br>Причина: <strong>${excelEsc(errorMessage)}</strong>${permissionHint}</div>`});
+      const permissionHint=errorCode==="PERMISSION_DENIED"
+        ? `<br><br><strong>Firebase отклонил запись.</strong> Проверь, что выполнен вход владельцем и правила Realtime Database разрешают запись для этого аккаунта.`
+        : errorCode==="UNAUTHENTICATED"
+          ? `<br><br><strong>Пользователь не авторизован.</strong> Войди через Google и повтори импорт.`
+          : "";
+
+      console.error("Excel import failed:",{
+        code:errorCode,
+        message:errorMessage,
+        user:auth.currentUser?.email||null
+      });
+
+      setSync(
+        `⚠️ Ошибка Excel: ${errorLabel}`,
+        "err"
+      );
+
+      await showExcelMessage({
+        title:"Не удалось сохранить Excel",
+        icon:"⚠️",
+        iconClass:"excel-error-icon",
+        body:`<div class="excel-error"><strong>Импорт не сохранён.</strong><br><br>Код ошибки: <strong>${excelEsc(errorLabel)}</strong><br>Причина: <strong>${excelEsc(errorMessage)}</strong>${permissionHint}</div>`
+      });
+
       return;
     }
+
 
     if(skipped.length){
       console.warn("Пропущенные строки Excel:",skipped);
