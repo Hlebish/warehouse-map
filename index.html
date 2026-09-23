@@ -79,6 +79,9 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
   color:var(--muted);
   margin-bottom:20px;
 }
+.dialog select,.dialog input[type="text"]{width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #b8c4d0;border-radius:8px;font-size:16px;background:#fff}
+#moveModal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);align-items:center;justify-content:center;z-index:10000}
+#moveModal .dialog{max-width:520px;width:calc(100% - 32px)}
 </style>
 </head>
 <body>
@@ -167,7 +170,24 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
 <div id="modal"><div class="dialog">
 <h2>Ячейка <span id="addr" class="addr"></span></h2><label>Что лежит в ячейке</label>
 <textarea id="content" placeholder="Например: APHD4307 — капот Honda, 2 шт.&#10;Можно указать несколько позиций."></textarea>
-<div class="actions"><button onclick="closeModal()">Отмена</button><button class="primary" onclick="saveCell()">Сохранить</button></div>
+<div class="actions">
+<button onclick="closeModal()">Отмена</button>
+<button onclick="openMoveModal()">📦 Переместить деталь</button>
+<button class="primary" onclick="saveCell()">Сохранить</button>
+</div>
+</div></div>
+
+<div id="moveModal"><div class="dialog">
+<h2>📦 Переместить деталь</h2>
+<label>Что перемещаем</label>
+<select id="moveItem"></select>
+<label style="display:block;margin-top:12px">Новая ячейка</label>
+<input id="moveDestination" type="text" placeholder="Например: S4-F-7">
+<div id="moveError" style="display:none;color:#b91c1c;margin-top:10px"></div>
+<div class="actions">
+<button onclick="closeMoveModal()">Отмена</button>
+<button class="primary" onclick="moveSelectedDetail()">Переместить</button>
+</div>
 </div></div>
 
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
@@ -287,6 +307,107 @@ function openModal(s,l,n){
  setTimeout(()=>document.getElementById("content").focus(),50);
 }
 function closeModal(){document.getElementById("modal").style.display="none";current=null}
+function openMoveModal(){
+  if(!current)return;
+
+  const value=String(data[current.s][current.l][current.n]||"").trim();
+  const lines=value.split(/\\r?\\n/).map(x=>x.trim()).filter(Boolean);
+  const select=document.getElementById("moveItem");
+  const error=document.getElementById("moveError");
+  error.style.display="none";
+  error.textContent="";
+
+  select.innerHTML="";
+  if(!lines.length){
+    const opt=document.createElement("option");
+    opt.textContent="В этой ячейке нет деталей";
+    opt.value="";
+    select.appendChild(opt);
+  }else{
+    lines.forEach((line,i)=>{
+      const opt=document.createElement("option");
+      opt.value=String(i);
+      opt.textContent=line;
+      select.appendChild(opt);
+    });
+  }
+
+  document.getElementById("moveDestination").value="";
+  document.getElementById("moveModal").style.display="flex";
+  setTimeout(()=>document.getElementById("moveDestination").focus(),50);
+}
+
+function closeMoveModal(){
+  document.getElementById("moveModal").style.display="none";
+}
+
+async function moveSelectedDetail(){
+  if(!current)return;
+
+  const value=String(data[current.s][current.l][current.n]||"").trim();
+  const lines=value.split(/\\r?\\n/).map(x=>x.trim()).filter(Boolean);
+  const index=Number(document.getElementById("moveItem").value);
+  const destinationRaw=document.getElementById("moveDestination").value.trim();
+  const error=document.getElementById("moveError");
+
+  error.style.display="none";
+  error.textContent="";
+
+  if(!lines.length || !Number.isInteger(index) || !lines[index]){
+    error.textContent="В этой ячейке нет детали для перемещения.";
+    error.style.display="block";
+    return;
+  }
+
+  const parsed=parseExcelLocations(destinationRaw);
+  if(parsed.length!==1){
+    error.textContent="Укажи одну конкретную ячейку, например S4-F-7.";
+    error.style.display="block";
+    return;
+  }
+
+  const dest=parsed[0];
+  const sourceAddress=address(current.s,current.l,current.n);
+  const destAddress=address(dest.s,dest.l,dest.n);
+
+  if(sourceAddress===destAddress){
+    error.textContent="Новая ячейка совпадает с текущей.";
+    error.style.display="block";
+    return;
+  }
+
+  const detail=lines[index];
+  const destValue=String(data[dest.s][dest.l][String(dest.n)]||"").trim();
+  const newSourceLines=lines.filter((_,i)=>i!==index);
+  const newSourceValue=newSourceLines.join("\n");
+  const newDestValue=destValue ? destValue+"\n"+detail : detail;
+
+  try{
+    // Сначала меняем Firebase. Если запись не прошла, локальные данные не трогаем.
+    const updates={};
+    updates["cells/"+current.s+"/"+current.l+"/"+current.n]=newSourceValue;
+    updates["cells/"+dest.s+"/"+dest.l+"/"+dest.n]=newDestValue;
+    await rootRef.update(updates);
+
+    data[current.s][current.l][current.n]=newSourceValue;
+    data[dest.s][dest.l][String(dest.n)]=newDestValue;
+    setLocal();
+    render();
+    doSearch();
+    setSync("📦 Деталь перемещена","ok");
+
+    closeMoveModal();
+    closeModal();
+
+    alert("Готово!\n\n"+detail+"\n\n"+sourceAddress+" → "+destAddress);
+  }catch(e){
+    console.error("Ошибка перемещения:",e);
+    error.textContent="Не удалось сохранить перемещение в Firebase.";
+    error.style.display="block";
+    setSync("⚠️ Ошибка синхронизации","err");
+  }
+}
+
 async function saveCell(){
  if(!current)return;
  const value=document.getElementById("content").value.trim();
