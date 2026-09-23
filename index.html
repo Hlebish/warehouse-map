@@ -704,44 +704,18 @@ function excelCellText(value){
   return String(value).trim();
 }
 
-function findExcelColumns(row){
-  // Для выгрузки из 1С сейчас используются:
-  // B = наименование, C = артикул, D = адрес.
-  // Но если 1С немного изменит расположение колонок,
-  // пытаемся определить их автоматически.
-
+function findExcelColumns(row,columnMap){
   const cells=(row||[]).map(excelCellText);
 
-  let description="";
-  let article="";
-  let location="";
+  const descIndex=columnMap?.description ?? (cells.length===3 ? 0 : 1);
+  const articleIndex=columnMap?.article ?? (cells.length===3 ? 1 : 2);
+  const locationIndex=columnMap?.location ?? (cells.length===3 ? 2 : 3);
 
-  for(const value of cells){
-    if(!value)continue;
-
-    if(!location && /S\s*[1-5]\b/i.test(value)){
-      location=value;
-      continue;
-    }
-
-    // Артикул в текущей выгрузке может быть числом вроде 451903
-    // или текстовым кодом вроде APMZ1603C.
-    if(!article && (
-      /^AP[A-Z]{1,5}\d+[A-Z0-9]*$/i.test(value) ||
-      /^\d{4,}$/.test(value)
-    )){
-      article=value;
-      continue;
-    }
-  }
-
-  // Если автоматическое определение не сработало,
-  // используем известный формат текущей выгрузки 1С.
-  if(!description)description=cells[1]||"";
-  if(!article)article=cells[2]||"";
-  if(!location)location=cells[3]||"";
-
-  return {description,article,location};
+  return {
+    description: cells[descIndex]||"",
+    article: cells[articleIndex]||"",
+    location: cells[locationIndex]||""
+  };
 }
 
 async function importExcelFile(file){
@@ -758,14 +732,44 @@ async function importExcelFile(file){
     const sheet=workbook.Sheets[workbook.SheetNames[0]];
     const rows=XLSX.utils.sheet_to_json(sheet,{header:1,defval:"",raw:false});
 
+    if(!rows.length){
+      alert("Excel пустой.");
+      return;
+    }
+
+    // Определяем колонки по заголовкам. Текущий Excel из 1С:
+    // A = Описание, B = Артикул, C = Ячейка.
+    const headers=(rows[0]||[]).map(v=>String(v||"").trim().toLowerCase());
+
+    const columnMap={
+      description: headers.findIndex(h =>
+        /описан|наимен|назван/.test(h)
+      ),
+      article: headers.findIndex(h =>
+        /артикул|код/.test(h)
+      ),
+      location: headers.findIndex(h =>
+        /ячейк|адрес|место.*хран|хранен/.test(h)
+      )
+    };
+
+    // Если заголовки не распознаны, используем стандартный формат:
+    // 3 колонки -> A/B/C, 4+ колонок -> B/C/D.
+    if(columnMap.description<0)
+      columnMap.description=(rows[0]||[]).length===3 ? 0 : 1;
+    if(columnMap.article<0)
+      columnMap.article=(rows[0]||[]).length===3 ? 1 : 2;
+    if(columnMap.location<0)
+      columnMap.location=(rows[0]||[]).length===3 ? 2 : 3;
+
     const imported={};
     const skipped=[];
     let rowCount=0;
     let locationCount=0;
 
-    for(let i=0;i<rows.length;i++){
+    for(let i=1;i<rows.length;i++){
       const row=rows[i]||[];
-      const {description,article,location}=findExcelColumns(row);
+      const {description,article,location}=findExcelColumns(row,columnMap);
 
       if(!description && !article && !location)continue;
       rowCount++;
