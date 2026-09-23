@@ -405,7 +405,7 @@ function openModal(s,l,n){
  setTimeout(()=>document.getElementById("content").focus(),50);
 }
 function closeModal(){document.getElementById("modal").style.display="none";current=null}
-async async function saveCell(){
+async function saveCell(){
  if(!current)return;
  const value=document.getElementById("content").value.trim();
  const oldValue=data[current.s][current.l][current.n]||"";
@@ -444,7 +444,7 @@ function renderSpecial(){
   const v=specialData[type]||"";document.getElementById(id).classList.toggle("filled",!!v);document.getElementById(preview).textContent=v;
  }
 }
-async async function clearAll(){
+async function clearAll(){
  if(!confirm("Удалить содержимое всех видимых 450 ячеек?"))return;
  data=createEmptyData();specialData={resale:"",defect:""};setLocal();render();doSearch();
  try{await rootRef.set({cells:data,special:specialData});setSync("☁️ Синхронизировано","ok");}
