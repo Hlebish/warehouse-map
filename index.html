@@ -468,11 +468,7 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
 </div>
 </div></div>
 
-<div id="detailModal"><div class="dialog detail-card-dialog">
-<h2>📦 Карточка детали</h2>
-<div class="detail-card-head">
-  <div>
-    <div id="detailCardArticle" class="detail-card-article">—</div>
+
     <div id="detailCardDescription" class="detail-card-description">—</div>
   </div>
 </div>
@@ -863,68 +859,9 @@ function splitDetailLine(line){
   };
 }
 
-async function openDetailCard(addressValue, line){
-  const parts=String(addressValue||"").match(/^S([1-5])-([A-K])-([0-9]{1,2})$/);
-  if(!parts)return;
+async 
 
-  const s=`S${parts[1]}`, l=parts[2], n=parts[3];
-  const parsed=splitDetailLine(line);
-  currentDetailCard={address:addressValue,line:String(line),s,l,n};
 
-  document.getElementById("detailCardArticle").textContent=parsed.article||"—";
-  document.getElementById("detailCardDescription").textContent=parsed.description||"Без описания";
-  document.getElementById("detailCardAddress").textContent=addressValue;
-  document.getElementById("detailCardAdded").textContent="Загрузка…";
-  document.getElementById("detailCardUpdated").textContent="Загрузка…";
-  document.getElementById("detailCardUser").textContent="Загрузка…";
-  document.getElementById("detailCardHistory").innerHTML="Загрузка…";
-  document.getElementById("detailModal").style.display="flex";
-
-  const key=itemKey(addressValue,String(line));
-  const meta=itemMeta[key]||{};
-  document.getElementById("detailCardAdded").textContent=formatDetailDate(meta.addedAt);
-  document.getElementById("detailCardUpdated").textContent=formatDetailDate(meta.updatedAt);
-
-  try{
-    const snap=await rootRef.child("history").orderByChild("timestamp").limitToLast(300).once("value");
-    const all=snap.val()||{};
-    const events=Object.values(all)
-      .filter(e=>{
-        if(!e)return false;
-        const sameArticle=String(e.article||e.detail||"").trim()===String(line).trim();
-        const sameAddress=String(e.address||"")===addressValue ||
-          String(e.from||"")===addressValue || String(e.to||"")===addressValue;
-        return sameArticle || sameAddress;
-      })
-      .sort((a,b)=>(Number(a.timestamp)||0)-(Number(b.timestamp)||0));
-
-    const last=events[events.length-1];
-    if(last)document.getElementById("detailCardUser").textContent=last.email||"—";
-
-    if(!events.length){
-      document.getElementById("detailCardHistory").innerHTML='<div class="detail-history-entry">История для этой детали пока пуста.</div>';
-    }else{
-      document.getElementById("detailCardHistory").innerHTML=events.slice(-20).reverse().map(e=>{
-        const type=e.type||"event";
-        let text="";
-        if(type==="move") text=`<span class="move">Перемещение:</span> ${e.from||"—"} → ${e.to||"—"}`;
-        else if(type==="add") text=`<strong>Добавление:</strong> ${e.address||addressValue}`;
-        else if(type==="remove") text=`<strong>Удаление:</strong> ${e.address||addressValue}`;
-        else if(type==="edit") text=`<strong>Изменение:</strong> ${e.address||addressValue}`;
-        else text=`<strong>${type}</strong>`;
-        return `<div class="detail-history-entry"><div class="time">${formatDetailDate(e.timestamp)} · ${escapeHtml(e.email||"")}</div>${text}</div>`;
-      }).join("");
-    }
-  }catch(e){
-    console.warn("Не удалось загрузить историю детали:",e);
-    document.getElementById("detailCardHistory").innerHTML='<div class="detail-history-entry">Не удалось загрузить историю.</div>';
-  }
-}
-
-function closeDetailCard(){
-  document.getElementById("detailModal").style.display="none";
-  currentDetailCard=null;
-}
 
 function showDetailOnMap(){
   if(!currentDetailCard)return;
