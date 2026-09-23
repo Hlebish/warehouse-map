@@ -93,6 +93,7 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
 .history-toolbar input,.history-toolbar select{flex:1 1 180px}
 
 
+
 .mini-map-wrap{
   background:#fff;
   border:1px solid var(--border);
@@ -113,7 +114,9 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
 .warehouse-plan{
   position:relative;
   width:100%;
-  height:560px;
+  max-width:1280px;
+  aspect-ratio:1280 / 853;
+  margin:0 auto;
   overflow:hidden;
   border-radius:10px;
   background:#e7ebef;
@@ -122,7 +125,7 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
   display:block;
   width:100%;
   height:100%;
-  object-fit:contain;
+  object-fit:fill;
   user-select:none;
 }
 #planMarkers{
@@ -131,65 +134,54 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
 }
 .plan-marker{
   position:absolute;
+  transform:translate(-50%,-50%);
   width:0;
   height:0;
-  transform:translate(-50%,-50%);
   cursor:pointer;
-  z-index:2;
+  z-index:3;
 }
-.plan-shelf{
+.plan-badge{
   position:absolute;
   left:0;
   top:0;
-  width:52px;
-  height:48px;
   transform:translate(-50%,-50%);
-  border:3px solid #f0c978;
-  background:rgba(255,219,126,.38);
-  box-shadow:0 0 0 2px rgba(255,255,255,.8),0 0 18px rgba(240,201,120,.95);
-  border-radius:8px;
-  animation:planPulse 1.4s ease-in-out infinite;
-}
-.plan-number{
-  position:absolute;
-  border:3px solid #f0c978;
-  background:rgba(255,219,126,.82);
-  box-shadow:0 0 0 2px rgba(255,255,255,.85),0 0 14px rgba(240,201,120,.9);
-  border-radius:6px;
-  min-width:30px;
-  height:24px;
-  padding:1px 5px;
   display:flex;
   align-items:center;
-  justify-content:center;
-  transform:translate(-50%,-50%);
-  font-weight:800;
-  color:#1b1b1b;
-  font-size:14px;
-  animation:planPulse 1.4s ease-in-out infinite;
+  gap:3px;
+  padding:3px 5px;
+  border-radius:6px;
+  border:2px solid #f0c978;
+  background:rgba(255,219,126,.94);
+  box-shadow:0 0 0 2px rgba(255,255,255,.85),0 2px 9px rgba(0,0,0,.24);
+  color:#141414;
+  font:800 11px/1 Arial,sans-serif;
+  white-space:nowrap;
+  animation:planPulse 1.35s ease-in-out infinite;
 }
-.plan-label{
+.plan-badge .plan-side-arrow{
+  font-size:10px;
+  line-height:1;
+}
+.plan-connector{
   position:absolute;
   left:0;
-  top:-39px;
-  transform:translate(-50%,0);
-  white-space:nowrap;
-  padding:4px 7px;
-  border-radius:7px;
-  background:rgba(23,33,43,.92);
-  color:#fff;
-  font-size:11px;
-  font-weight:700;
+  top:0;
+  height:2px;
+  background:#f0c978;
+  box-shadow:0 0 5px rgba(240,201,120,.9);
+  transform-origin:0 50%;
+}
+.plan-badge:hover{
+  transform:translate(-50%,-50%) scale(1.06);
 }
 @keyframes planPulse{
-  0%,100%{opacity:.7}
+  0%,100%{opacity:.74}
   50%{opacity:1}
 }
 @media(max-width:700px){
- .warehouse-plan{height:360px}
- .plan-shelf{width:38px;height:34px;border-width:2px}
- .plan-number{min-width:24px;height:20px;font-size:11px;border-width:2px}
- .plan-label{font-size:9px}
+  .mini-map-title{align-items:flex-start;flex-direction:column}
+  .plan-badge{font-size:9px;padding:2px 4px;border-width:1.5px}
+  .plan-badge .plan-side-arrow{font-size:8px}
 }
 @media(max-width:1099px){
  .mini-map{grid-template-columns:repeat(2,minmax(150px,1fr))}
@@ -1451,37 +1443,45 @@ document.getElementById("excelFile").addEventListener("change",async e=>{
 
 
 
-// Координаты на исходной схеме 1280×853.
-// Подсвечиваем пару: букву полки + номер ячейки.
-// Это позволяет однозначно прочитать адрес прямо на схеме.
+
+// Координаты проходов на исходной схеме 1280×853.
+// Индикатор ВСЕГДА стоит в самом проходе, там где на плане обозначены S1...S5.
+// По вертикали он совпадает с нужной частью стойки/ячейки.
+// Слева/справа от индикатора — маленький коннектор к соответствующей стороне.
 const planMap = {
-  leftX:  {1:248, 2:339, 3:568, 4:795, 5:1059},
-  rightX: {2:485, 3:713, 4:940, 5:1203},
+  aisleX: {1:175, 2:412, 3:639, 4:867, 5:1103},
 
-  longShelfY:{
-    A:344,B:287,C:231,D:174,E:115,
-    F:344,G:287,H:231,J:174,K:115
-  },
-  shortShelfY:{
-    A:650,B:608,C:575,D:542,E:509,
-    F:650,G:608,H:575,J:542,K:509
+  longY: {
+    10:108,
+    9:142,
+    8:176,
+    7:210,
+    6:245,
+    5:280,
+    4:315
   },
 
-  longCellY:{10:107,9:141,8:174,7:208,6:243,5:280,4:315},
-  shortCellY:{3:520,2:574,1:638}
+  shortY: {
+    3:520,
+    2:576,
+    1:640
+  }
 };
 
-function percentPoint(x,y){
-  return {left:(x/1280)*100, top:(y/853)*100};
+function planPercent(x,y){
+  return {
+    left:(x/1280)*100,
+    top:(y/853)*100
+  };
 }
 
 function openPlanCell(s,l,n){
-  const el=document.getElementById(`cell-S${s}-${l}-${n}`);
-  if(el){
-    el.scrollIntoView({behavior:"smooth",block:"center",inline:"center"});
-    el.classList.remove("focused");
-    void el.offsetWidth;
-    el.classList.add("focused");
+  const realCell=document.getElementById(`cell-S${s}-${l}-${n}`);
+  if(realCell){
+    realCell.scrollIntoView({behavior:"smooth",block:"center",inline:"center"});
+    realCell.classList.remove("focused");
+    void realCell.offsetWidth;
+    realCell.classList.add("focused");
   }
   openModal(s,l,n);
 }
@@ -1491,67 +1491,79 @@ function renderMiniMap(found=[]){
   const legend=document.getElementById("miniMapLegend");
   if(!root)return;
 
-  const targets=[];
+  root.innerHTML="";
+
+  const unique=[];
   const seen=new Set();
 
   for(const x of (found||[])){
     if(x.special || !x.s || !x.l || !x.n)continue;
+
     const s=Number(String(x.s).replace("S",""));
     const n=Number(x.n);
-    if(s<1||s>5||!planMap.leftX[s])continue;
-    if(planMap.longCellY[n]===undefined && planMap.shortCellY[n]===undefined)continue;
+
+    if(!planMap.aisleX[s])continue;
+
+    const y=n<=3 ? planMap.shortY[n] : planMap.longY[n];
+    if(y===undefined)continue;
 
     const key=`S${s}-${x.l}-${n}`;
     if(seen.has(key))continue;
+
     seen.add(key);
-    targets.push({s,l:x.l,n,a:x.a,key});
+    unique.push({s,l:x.l,n,key});
   }
 
-  root.innerHTML="";
-
-  if(!targets.length){
-    if(legend)legend.textContent="При поиске подсветится нужная полка и номер ячейки";
+  if(!unique.length){
+    if(legend){
+      legend.textContent="При поиске индикатор появится в проходе S1–S5 и покажет нужную часть стеллажа";
+    }
     return;
   }
 
-  for(const t of targets){
-    const isRight=rightLetters.includes(t.l);
-    const x=isRight ? planMap.rightX[t.s] : planMap.leftX[t.s];
-
-    const shelfY=t.n<=3 ? planMap.shortShelfY[t.l] : planMap.longShelfY[t.l];
-    const numberY=t.n<=3 ? planMap.shortCellY[t.n] : planMap.longCellY[t.n];
-
-    const shelf=percentPoint(x,shelfY);
-    const number=percentPoint(isRight ? x-45 : x+45,numberY);
+  for(const item of unique){
+    const x=planMap.aisleX[item.s];
+    const y=item.n<=3 ? planMap.shortY[item.n] : planMap.longY[item.n];
+    const p=planPercent(x,y);
 
     const marker=document.createElement("div");
     marker.className="plan-marker";
-    marker.style.left=shelf.left+"%";
-    marker.style.top=shelf.top+"%";
-    marker.title=`${t.key} — открыть ячейку`;
-    marker.onclick=()=>openPlanCell(t.s,t.l,t.n);
+    marker.style.left=p.left+"%";
+    marker.style.top=p.top+"%";
+    marker.title=`${item.key} — открыть ячейку`;
+    marker.onclick=()=>openPlanCell(item.s,item.l,item.n);
 
-    const shelfBox=document.createElement("div");
-    shelfBox.className="plan-shelf";
+    const badge=document.createElement("div");
+    badge.className="plan-badge";
 
-    const numberBox=document.createElement("div");
-    numberBox.className="plan-number";
-    numberBox.style.left=((number.left-shelf.left)/100*100)+"%";
-    numberBox.style.top=((number.top-shelf.top)/100*100)+"%";
-    numberBox.textContent=t.n;
+    const isLeft=leftLetters.includes(item.l);
+    const arrow=document.createElement("span");
+    arrow.className="plan-side-arrow";
+    arrow.textContent=isLeft ? "◀" : "▶";
 
-    const label=document.createElement("div");
-    label.className="plan-label";
-    label.textContent=t.key;
+    const label=document.createElement("span");
+    label.textContent=`${item.l}${item.n}`;
 
-    marker.appendChild(shelfBox);
-    marker.appendChild(numberBox);
-    marker.appendChild(label);
+    badge.appendChild(arrow);
+    badge.appendChild(label);
+
+    // Коннектор в сторону нужной стойки.
+    const connector=document.createElement("div");
+    connector.className="plan-connector";
+
+    // На схеме стойки находятся по обе стороны прохода примерно на 55 px.
+    const dx=isLeft ? -56 : 56;
+    const length=Math.abs(dx);
+    connector.style.width=length+"px";
+    connector.style.transform=`rotate(${isLeft?180:0}deg)`;
+
+    marker.appendChild(connector);
+    marker.appendChild(badge);
     root.appendChild(marker);
   }
 
   if(legend){
-    legend.textContent=`🔶 Найдено на плане: ${targets.length} ${targets.length===1?"ячейка":"ячеек"} · нажми на подсветку`;
+    legend.textContent=`🔶 Найдено: ${unique.length} ${unique.length===1?"ячейка":"ячеек"} · индикаторы стоят в проходах`;
   }
 }
 
