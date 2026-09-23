@@ -478,8 +478,64 @@ function expandSearchToken(token){
   return [...result].filter(Boolean);
 }
 
+const brandCodeAliases={
+  "mz":["mazda","мазда","mz"],
+  "hd":["honda","хонда","hd"],
+  "ty":["toyota","тойота","ty"],
+  "ns":["nissan","ниссан","ns"],
+  "fd":["ford","форд","fd"],
+  "au":["audi","ауди","au"],
+  "bm":["bmw","бмв","bm"],
+  "vw":["volkswagen","фольксваген","vw"],
+  "ch":["chevrolet","шевроле","ch","chevy"],
+  "mb":["mercedes","мерседес","mb"],
+  "lx":["lexus","лексус","lx"],
+  "inf":["infiniti","инфинити","inf"],
+  "ac":["acura","акура","ac"],
+  "su":["subaru","субару","su"],
+  "ki":["kia","киа","ki"],
+  "hy":["hyundai","хендай","hy"],
+  "op":["opel","опель","op"],
+  "sk":["skoda","шкода","sk"],
+  "pg":["peugeot","пежо","pg"],
+  "ren":["renault","рено","ren"],
+  "ft":["fiat","фиат","ft"]
+};
+
+const partCodeAliases={
+  "1":["крыло левое","левое крыло","крыло","wing"],
+  "2":["крыло правое","правое крыло","крыло","wing"],
+  "3":["капот","hood","bonnet"],
+  "6":["бампер","передний бампер","bumper"],
+  "7":["задний бампер","задний бампер","rear bumper","бампер","bumper"]
+};
+
+function addCodeMeaning(text){
+  let result=String(text||"");
+  const codes=result.match(/AP[A-ZА-Я]{2}\d{4}/gi)||[];
+
+  for(const code of codes){
+    const upper=code.toUpperCase();
+    const brand=upper.slice(2,4).toLowerCase();
+    const part=upper.slice(-1);
+
+    if(brandCodeAliases[brand]){
+      result+=" "+brandCodeAliases[brand].join(" ");
+    }
+
+    if(partCodeAliases[part]){
+      result+=" "+partCodeAliases[part].join(" ");
+    }
+  }
+
+  return result;
+}
+
 function searchScore(queryTokens,text){
-  const normalized=normalizeSearchText(text);
+  // Добавляем к артикулу смысловые слова из его кода:
+  // APMZ1606 -> Mazda + мазда + MZ + бампер.
+  const enriched=addCodeMeaning(text);
+  const normalized=normalizeSearchText(enriched);
   const textTokens=normalized.split(/\s+/).filter(Boolean);
   const compact=normalized.replace(/\s+/g,"");
   let score=0;
@@ -502,6 +558,7 @@ function searchScore(queryTokens,text){
         }else if(token.length>=3 && word.length>=3){
           const distance=levenshtein(token,word);
           const maxDistance=token.length<=4?1:token.length<=7?2:3;
+
           if(distance<=maxDistance){
             best=Math.max(best,70-distance*10);
           }
@@ -509,7 +566,10 @@ function searchScore(queryTokens,text){
       }
     }
 
+    // КАЖДОЕ слово запроса обязательно должно найтись.
+    // Поэтому "Mazda бампер" не покажет просто Mazda-крылья.
     if(best===0)return 0;
+
     score+=best;
   }
 
