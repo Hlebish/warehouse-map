@@ -853,34 +853,82 @@ async function importExcelFile(file){
 
     if(!ok)return;
 
-    // Обновляем только ячейки, которые пришли из Excel.
-    // Остальные данные карты не трогаем.
+    // Формируем только те ячейки, которые пришли из Excel.
+    // Используем частичное обновление Firebase, чтобы импорт:
+    // 1) не перезаписывал весь склад;
+    // 2) не удалял существующие ячейки;
+    // 3) не зависел от размера всего объекта data.
+    const patch={};
+    const validAddresses=[];
+
     for(const addr of addresses){
-      const match=addr.match(/^S([1-5])-([A-K])-(\\d+)$/);
+      const match=addr.match(/^S([1-5])-([A-K])-(\d+)$/);
       if(!match)continue;
 
       const [,s,l,n]=match;
+      const value=imported[addr].join("\n");
 
-      if(!data[`S${s}`] || !data[`S${s}`][l])continue;
+      if(!data[`S${s}`] || !data[`S${s}`][l]){
+        continue;
+      }
 
-      data[`S${s}`][l][n]=imported[addr].join("\\n");
+      if(!data[`S${s}`][l][n] && value){
+        // просто для читаемости; значение всё равно будет записано ниже
+      }
+
+      patch[`S${s}/${l}/${n}`]=value;
+      validAddresses.push(addr);
     }
 
-    setLocal();
-    render();
-    doSearch();
+    if(!validAddresses.length){
+      alert("Excel распознан, но ни одного адреса карты не удалось подготовить к записи.");
+      return;
+    }
 
     try{
-      await rootRef.set({cells:data,special:specialData});
-      setSync(`☁️ Excel загружен: ${addresses.length} ячеек`,"ok");
-    }catch(e){
-      setSync("⚠️ Excel загружен локально, но Firebase не принял запись","err");
-      console.error(e);
+      // Сначала записываем в Firebase.
+      // Если Firebase отклонит запись, данные на карте не меняем.
+      await rootRef.child("cells").update(patch);
+
+      // После успешной записи обновляем локальное состояние.
+      for(const addr of validAddresses){
+        const match=addr.match(/^S([1-5])-([A-K])-(\d+)$/);
+        const [,s,l,n]=match;
+        data[`S${s}`][l][n]=imported[addr].join("\n");
+      }
+
+      setLocal();
+      render();
+      doSearch();
+
+      setSync(`☁️ Excel загружен: ${validAddresses.length} ячеек`,"ok");
+
       alert(
-        "Данные загрузились в эту страницу, но Firebase отклонил запись.\\n\\n"+
-        "Проверь права доступа."
+        `Готово!\\n\\n`+
+        `Загружено ячеек: ${validAddresses.length}\\n`+
+        `Записей: ${locationCount}\\n`+
+        (skipped.length
+          ? `Пропущено строк: ${skipped.length}`
+          : "Все строки с адресами обработаны.")
       );
+
+    }catch(e){
+      console.error("Excel import Firebase error:",e);
+
+      setSync(
+        `⚠️ Ошибка загрузки Excel: ${e?.code||"Firebase"}`,
+        "err"
+      );
+
+      alert(
+        `Excel распознан, но Firebase не разрешил записать данные.\\n\\n`+
+        `Ошибка: ${e?.code||e?.message||e}\\n\\n`+
+        `Если здесь написано PERMISSION_DENIED — проверь права записи для твоего Google-аккаунта.`
+      );
+
+      return;
     }
+
 
     if(skipped.length){
       console.warn("Пропущенные строки Excel:",skipped);
