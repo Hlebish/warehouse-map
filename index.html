@@ -156,6 +156,15 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
 .item-meta-row{padding:5px 0;border-bottom:1px solid #e1e6eb}.item-meta-row:last-child{border-bottom:0}
 .item-meta-row strong{color:#1f2937}.history-entry{border:1px solid #d7dee6;border-radius:9px;padding:9px;margin:7px 0;background:#fff;font-size:13px}
 .history-entry .history-time{color:#66717d;font-size:11px;margin-bottom:4px}
+#moveModal .move-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+#moveModal .move-grid label{margin:0}
+#moveModal .move-grid select{width:100%}
+#moveModal .move-detail{margin-top:12px}
+#moveModal .move-detail select{width:100%}
+@media(max-width:600px){
+  #moveModal .move-grid{grid-template-columns:1fr 1fr}
+  #moveModal .move-detail{grid-column:1/-1}
+}
 .history-entry .history-move{font-weight:700;color:#1f6feb}.history-entry .history-add{color:#2e6b3b;font-weight:700}.history-entry .history-remove{color:#b42318;font-weight:700}
 #historyModal{position:fixed;inset:0;background:#0007;display:none;align-items:center;justify-content:center;padding:16px;z-index:40}
 #historyModal .dialog{width:min(760px,100%);max-height:85vh;overflow:auto}
@@ -446,14 +455,47 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
 
 <div id="moveModal"><div class="dialog">
 <h2>📦 Переместить деталь</h2>
-<label>Что перемещаем</label>
-<select id="moveItem"></select>
-<label style="display:block;margin-top:12px">Новая ячейка</label>
-<input id="moveDestination" type="text" placeholder="Например: S4-F-7">
+
+<label>Откуда перемещаем</label>
+<div class="move-grid">
+  <div>
+    <small>Улица</small>
+    <select id="moveFromStreet"></select>
+  </div>
+  <div>
+    <small>Полка</small>
+    <select id="moveFromShelf"></select>
+  </div>
+  <div>
+    <small>Ячейка</small>
+    <select id="moveFromCell"></select>
+  </div>
+  <div class="move-detail">
+    <small>Деталь</small>
+    <select id="moveItem"></select>
+  </div>
+</div>
+
+<label style="display:block;margin-top:14px">Куда перемещаем</label>
+<div class="move-grid">
+  <div>
+    <small>Улица</small>
+    <select id="moveToStreet"></select>
+  </div>
+  <div>
+    <small>Полка</small>
+    <select id="moveToShelf"></select>
+  </div>
+  <div>
+    <small>Ячейка</small>
+    <select id="moveToCell"></select>
+  </div>
+</div>
+
 <div id="moveError" style="display:none;color:#b91c1c;margin-top:10px"></div>
 <div class="actions">
 <button onclick="closeMoveModal()">Отмена</button>
-<button data-edit-only class="primary" onclick="moveSelectedDetail()">Переместить</button>
+<button data-edit-only class="primary" onclick="moveSelectedDetail()">📦 Переместить</button>
 </div>
 </div></div>
 
@@ -805,34 +847,136 @@ function openModal(s,l,n){
  setTimeout(()=>document.getElementById("content").focus(),50);
 }
 function closeModal(){document.getElementById("modal").style.display="none";current=null}
-function openMoveModal(){
-  if(!current)return;
+function moveAllowedShelves(street){
+  return String(street)==="S1" ? leftLetters : letters;
+}
 
-  const value=String(data[current.s][current.l][current.n]||"").trim();
-  const lines=value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+function fillMoveShelves(selectId, street, preferred){
+  const select=document.getElementById(selectId);
+  if(!select)return;
+  const allowed=moveAllowedShelves(street);
+  select.innerHTML="";
+  allowed.forEach(letter=>{
+    const opt=document.createElement("option");
+    opt.value=letter;
+    opt.textContent=`Полка ${letter}`;
+    select.appendChild(opt);
+  });
+  if(preferred && allowed.includes(preferred)) select.value=preferred;
+}
+
+function fillMoveCells(selectId, preferred){
+  const select=document.getElementById(selectId);
+  if(!select)return;
+  select.innerHTML="";
+  for(let n=1;n<=10;n++){
+    const opt=document.createElement("option");
+    opt.value=String(n);
+    opt.textContent=`Ячейка ${n}`;
+    select.appendChild(opt);
+  }
+  if(preferred) select.value=String(preferred);
+}
+
+function getMoveSource(){
+  const s=document.getElementById("moveFromStreet").value;
+  const l=document.getElementById("moveFromShelf").value;
+  const n=document.getElementById("moveFromCell").value;
+  return {s,l,n};
+}
+
+function getMoveDestination(){
+  const s=document.getElementById("moveToStreet").value;
+  const l=document.getElementById("moveToShelf").value;
+  const n=document.getElementById("moveToCell").value;
+  return {s,l,n};
+}
+
+function fillMoveItems(preferredIndex=0){
+  const source=getMoveSource();
   const select=document.getElementById("moveItem");
   const error=document.getElementById("moveError");
-  error.style.display="none";
-  error.textContent="";
+  const value=String(data?.[source.s]?.[source.l]?.[source.n]||"").trim();
+  const lines=linesOf(value);
 
   select.innerHTML="";
   if(!lines.length){
     const opt=document.createElement("option");
-    opt.textContent="В этой ячейке нет деталей";
     opt.value="";
+    opt.textContent="В этой ячейке нет деталей";
     select.appendChild(opt);
-  }else{
-    lines.forEach((line,i)=>{
-      const opt=document.createElement("option");
-      opt.value=String(i);
-      opt.textContent=line;
-      select.appendChild(opt);
-    });
+    return;
   }
 
-  document.getElementById("moveDestination").value="";
+  lines.forEach((line,i)=>{
+    const opt=document.createElement("option");
+    opt.value=String(i);
+    opt.textContent=line;
+    select.appendChild(opt);
+  });
+
+  select.value=String(Math.min(Math.max(Number(preferredIndex)||0,0),lines.length-1));
+  error.style.display="none";
+  error.textContent="";
+}
+
+function openMoveModal(){
+  if(!canEdit()){
+    alert("Режим просмотра: перемещение доступно только владельцу.");
+    return;
+  }
+
+  const fromStreet=document.getElementById("moveFromStreet");
+  const fromShelf=document.getElementById("moveFromShelf");
+  const fromCell=document.getElementById("moveFromCell");
+  const toStreet=document.getElementById("moveToStreet");
+  const toShelf=document.getElementById("moveToShelf");
+  const toCell=document.getElementById("moveToCell");
+  const error=document.getElementById("moveError");
+
+  error.style.display="none";
+  error.textContent="";
+
+  fromStreet.innerHTML="";
+  toStreet.innerHTML="";
+  for(let s=1;s<=5;s++){
+    for(const select of [fromStreet,toStreet]){
+      const opt=document.createElement("option");
+      opt.value=`S${s}`;
+      opt.textContent=`Улица S${s}`;
+      select.appendChild(opt);
+    }
+  }
+
+  let initial={s:"S1",l:"A",n:"1"};
+  if(current){
+    initial={s:current.s,l:current.l,n:String(current.n)};
+  }
+
+  fromStreet.value=initial.s;
+  fillMoveShelves("moveFromShelf",initial.s,initial.l);
+  fillMoveCells("moveFromCell",initial.n);
+
+  toStreet.value=initial.s;
+  fillMoveShelves("moveToShelf",initial.s,initial.l);
+  fillMoveCells("moveToCell",initial.n);
+
+  fillMoveItems(0);
+
+  fromStreet.onchange=()=>{
+    fillMoveShelves("moveFromShelf",fromStreet.value);
+    fillMoveCells("moveFromCell",1);
+    fillMoveItems(0);
+  };
+  fromShelf.onchange=()=>fillMoveItems(0);
+  fromCell.onchange=()=>fillMoveItems(0);
+
+  toStreet.onchange=()=>{
+    fillMoveShelves("moveToShelf",toStreet.value);
+    fillMoveCells("moveToCell",1);
+  };
+
   document.getElementById("moveModal").style.display="flex";
-  setTimeout(()=>document.getElementById("moveDestination").focus(),50);
 }
 
 function closeMoveModal(){
@@ -841,60 +985,27 @@ function closeMoveModal(){
 
 async function moveSelectedDetail(){
   if(!canEdit()){
-    alert("Режим просмотра: редактирование доступно только владельцу.");
+    alert("Режим просмотра: перемещение доступно только владельцу.");
     return;
   }
-  if(!current)return;
 
-  const value=String(data[current.s][current.l][current.n]||"").trim();
-  const lines=linesOf(value);
-  const index=Number(document.getElementById("moveItem").value);
-  const destinationRaw=document.getElementById("moveDestination").value.trim();
   const error=document.getElementById("moveError");
-
   error.style.display="none";
   error.textContent="";
 
+  const source=getMoveSource();
+  const dest=getMoveDestination();
+  const sourceValue=String(data?.[source.s]?.[source.l]?.[source.n]||"").trim();
+  const lines=linesOf(sourceValue);
+  const index=Number(document.getElementById("moveItem").value);
+
   if(!lines.length || !Number.isInteger(index) || !lines[index]){
-    error.textContent="В этой ячейке нет детали для перемещения.";
+    error.textContent="В выбранной ячейке нет детали для перемещения.";
     error.style.display="block";
     return;
   }
 
-  // Разрешаем ввод как полного адреса S4-F-7,
-  // так и просто номера полки F7 — тогда используется та же улица,
-  // на которой сейчас находится деталь.
-  let parsed=parseExcelLocations(destinationRaw);
-
-  if(parsed.length===0){
-    const shortMatch=destinationRaw.toUpperCase().replace(/\s+/g,"").match(/^([A-EFGHJK])[-–—]?(\d{1,2})$/);
-    if(shortMatch){
-      const letter=shortMatch[1];
-      const num=Number(shortMatch[2]);
-
-      if(num>=1 && num<=10 &&
-         !(current.s==="S1" && !leftLetters.includes(letter)) &&
-         (current.s!=="S1" || leftLetters.includes(letter))){
-        parsed=[`S${String(current.s).replace("S","")}-${letter}-${num}`];
-      }
-    }
-  }
-
-  if(parsed.length!==1){
-    error.textContent="Укажи одну конкретную ячейку: например F7 или S4-F-7.";
-    error.style.display="block";
-    return;
-  }
-
-  const destParts=String(parsed[0]).match(/^S([1-5])-([A-K])-([0-9]{1,2})$/);
-  if(!destParts){
-    error.textContent="Неверный адрес ячейки.";
-    error.style.display="block";
-    return;
-  }
-
-  const dest={s:`S${destParts[1]}`,l:destParts[2],n:Number(destParts[3])};
-  const sourceAddress=address(current.s,current.l,current.n);
+  const sourceAddress=address(source.s,source.l,source.n);
   const destAddress=address(dest.s,dest.l,dest.n);
 
   if(sourceAddress===destAddress){
@@ -904,48 +1015,62 @@ async function moveSelectedDetail(){
   }
 
   const detail=lines[index];
-  const destValue=String(data[dest.s][dest.l][String(dest.n)]||"").trim();
+  const destValue=String(data?.[dest.s]?.[dest.l]?.[dest.n]||"").trim();
   const newSourceLines=lines.filter((_,i)=>i!==index);
   const newSourceValue=newSourceLines.join("\n");
-  const newDestValue=destValue ? destValue+"\n"+detail : detail;
+  const newDestValue=destValue ? `${destValue}\n${detail}` : detail;
 
   const oldMeta=itemMeta[itemKey(sourceAddress,detail)]||{addedAt:null,updatedAt:null};
 
   try{
-    updateMetaAfterMove(sourceAddress,destAddress,detail);
+    // Сначала готовим изменения локально, но НЕ считаем их сохранёнными,
+    // пока Firebase не подтвердит атомарное обновление.
+    const nextMeta={...itemMeta};
+    delete nextMeta[itemKey(sourceAddress,detail)];
+    nextMeta[itemKey(destAddress,detail)]=oldMeta;
+
+    const historyKey=rootRef.child("history").push().key;
+    if(!historyKey) throw new Error("Не удалось создать запись истории");
 
     const updates={};
-    updates["cells/"+current.s+"/"+current.l+"/"+current.n]=newSourceValue;
-    updates["cells/"+dest.s+"/"+dest.l+"/"+dest.n]=newDestValue;
-    updates["itemMeta"]=itemMeta;
-
-    await rootRef.update(updates);
-
-    data[current.s][current.l][current.n]=newSourceValue;
-    data[dest.s][dest.l][String(dest.n)]=newDestValue;
-    setLocal();
-
-    await writeHistory({
+    updates[`cells/${source.s}/${source.l}/${source.n}`]=newSourceValue;
+    updates[`cells/${dest.s}/${dest.l}/${dest.n}`]=newDestValue;
+    updates["itemMeta"]=nextMeta;
+    updates[`history/${historyKey}`]={
       type:"move",
       detail,
       article:detail,
       from:sourceAddress,
       to:destAddress,
-      addedAt:oldMeta.addedAt||null
-    });
+      addedAt:oldMeta.addedAt||null,
+      email:currentUserEmail(),
+      timestamp:firebase.database.ServerValue.TIMESTAMP
+    };
+
+    await rootRef.update(updates);
+
+    // Только после успешного Firebase update меняем локальные данные.
+    itemMeta=nextMeta;
+    data[source.s][source.l][source.n]=newSourceValue;
+    data[dest.s][dest.l][dest.n]=newDestValue;
+    setLocal();
 
     render();
     doSearch();
     setSync("📦 Деталь перемещена · история записана","ok");
-    closeMoveModal();
-    closeModal();
 
-    alert("Готово!\n\n"+detail+"\n\n"+sourceAddress+" → "+destAddress);
+    closeMoveModal();
+    if(current){
+      document.getElementById("modal").style.display="none";
+      current=null;
+    }
+
+    alert(`Готово!\n\n${detail}\n\n${sourceAddress} → ${destAddress}`);
   }catch(e){
     console.error("Ошибка перемещения:",e);
     const code=e?.code||"";
     error.textContent=code==="PERMISSION_DENIED"
-      ? "Firebase запретил перемещение. Проверь права владельца."
+      ? "Firebase запретил перемещение. Проверь, что ты вошёл владельцем."
       : `Не удалось переместить деталь: ${e?.message||"ошибка Firebase"}`;
     error.style.display="block";
     setSync("⚠️ Ошибка перемещения","err");
