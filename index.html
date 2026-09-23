@@ -36,6 +36,76 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
 .result strong{display:block;color:#1264d8;font-size:14px}
 .result .article{display:block;margin-top:5px;color:#222;font-size:13px;font-weight:700}
  .result:hover{border-color:var(--accent)}
+.search-results-head{
+  font-weight:700;
+  margin:8px 0 6px;
+  color:var(--ink);
+}
+.search-result-row{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  background:#fff;
+  border:1px solid var(--border);
+  border-radius:9px;
+  padding:7px 9px;
+  margin:5px 0;
+  cursor:pointer;
+}
+.search-result-info{
+  flex:1 1 auto;
+  min-width:0;
+  overflow:hidden;
+}
+.search-result-info strong{
+  display:inline-block;
+  color:#1264d8;
+  font-size:13px;
+  margin-right:8px;
+  white-space:nowrap;
+}
+.search-result-info .article{
+  display:inline;
+  margin:0;
+  color:#222;
+  font-size:12px;
+  font-weight:700;
+  line-height:1.25;
+  overflow-wrap:anywhere;
+}
+.search-result-map-btn{
+  flex:0 0 auto;
+  border:1px solid #b8c4d0;
+  background:#f7f9fb;
+  color:#1264d8;
+  border-radius:7px;
+  padding:5px 8px;
+  font:700 11px/1.1 inherit;
+  cursor:pointer;
+  white-space:nowrap;
+}
+.search-result-map-btn:hover{background:#eaf2ff;border-color:#7da7e8}
+.plan-marker.plan-marker-focus .plan-aisle-label{
+  animation:planMarkerPulse .9s ease 2;
+}
+@keyframes planMarkerPulse{
+  0%,100%{transform:scale(1)}
+  50%{transform:scale(1.28)}
+}
+@media(max-width:520px){
+  .search-result-row{
+    gap:6px;
+    padding:6px 7px;
+    margin:4px 0;
+  }
+  .search-result-info strong{font-size:12px;margin-right:5px}
+  .search-result-info .article{font-size:11px;line-height:1.18}
+  .search-result-map-btn{
+    padding:5px 6px;
+    font-size:9px;
+  }
+  .search-results-head{margin:6px 0 4px;font-size:14px}
+}
 .special-storage{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:12px auto;max-width:1500px;padding:0 12px}
 .special-box{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:6px;box-shadow:0 2px 7px #0000000b;min-width:0}
 .special-cell{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;width:100%;min-height:54px;padding:9px;border:1px solid #b9c2ca;border-radius:8px;background:#f5f7f9;color:#25313d;cursor:pointer;font:inherit}
@@ -1918,6 +1988,7 @@ function renderMiniMap(found=[]){
 
     const marker=document.createElement("div");
     marker.className="plan-marker";
+    marker.id=`plan-marker-S${g.s}-${g.l}-${g.n}`;
     marker.style.left=p.left+"%";
     marker.style.top=p.top+"%";
     // Каждый индикатор имеет собственную небольшую область нажатия.
@@ -1950,6 +2021,19 @@ function renderMiniMap(found=[]){
       ? `✨ Подсвечено мест: ${total}`
       : "При поиске найденные ячейки будут мягко подсвечиваться на плане";
   }
+}
+
+function showResultOnMap(s,l,n){
+  const wrap=document.getElementById("miniMapWrap");
+  if(wrap) wrap.scrollIntoView({behavior:"smooth",block:"center"});
+  setTimeout(()=>{
+    const marker=document.getElementById(`plan-marker-${s}-${l}-${n}`);
+    if(marker){
+      marker.classList.remove("plan-marker-focus");
+      void marker.offsetWidth;
+      marker.classList.add("plan-marker-focus");
+    }
+  },250);
 }
 
 function doSearch(){
@@ -2017,17 +2101,25 @@ function doSearch(){
   }
 
   out.innerHTML=
-    `<div style="font-weight:700;margin:8px 0">Найдено: ${found.length}</div>`+
+    `<div class="search-results-head">Найдено: ${found.length}</div>`+
     found.map(x=>x.special
-      ? `<div class="result" onclick="openSpecial('${x.special}')">
-           <strong>${esc(x.a)}</strong>
-           <span class="article">${esc(x.v||"пусто")}</span>
+      ? `<div class="search-result-row" onclick="openSpecial('${x.special}')">
+           <div class="search-result-info">
+             <strong>${esc(x.a)}</strong>
+             <span class="article">${esc(x.v||"пусто")}</span>
+           </div>
          </div>`
-      : `<div class="result" onclick="openModal('${x.s}','${x.l}','${x.n}')">
-           <strong>${esc(x.a)}</strong>
-           <span class="article">${esc(
-             x.matchedLines?.length ? x.matchedLines.join("\n") : (x.v||"пусто")
-           ).replace(/\n/g,"<br>")}</span>
+      : `<div class="search-result-row" onclick="openModal('${x.s}','${x.l}','${x.n}')">
+           <div class="search-result-info">
+             <strong>${esc(x.a)}</strong>
+             <span class="article">${esc(
+               x.matchedLines?.length ? x.matchedLines.join(" · ") : (x.v||"пусто")
+             )}</span>
+           </div>
+           <button class="search-result-map-btn"
+             onclick="event.stopPropagation();showResultOnMap('${x.s}','${x.l}','${x.n}')">
+             🗺️ На карте
+           </button>
          </div>`
     ).join("");
 
