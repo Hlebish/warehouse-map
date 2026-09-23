@@ -1,0 +1,2381 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Интерактивная карта склада</title>
+<style>
+:root{--bg:#eef1f4;--card:#fff;--ink:#18212b;--muted:#66717d;--accent:#1f6feb;--empty:#e8edf2;--filled:#7ccf8a;--border:#c8d0d8;--search:#ef4444}
+*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:var(--bg);color:var(--ink)}
+header{background:#17212b;color:#fff;padding:16px 20px;position:sticky;top:0;z-index:1000;box-shadow:0 2px 10px #0002}
+h1{margin:0 0 8px;font-size:24px}.sub{font-size:13px;color:#cbd5df}.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+input,button{font:inherit;border:1px solid var(--border);border-radius:8px;padding:9px 11px;background:#fff}
+button{cursor:pointer;font-weight:600}button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+main{padding:12px;max-width:1500px;width:100%;margin:auto;overflow:hidden}
+.legend{display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-bottom:14px;color:var(--muted);font-size:13px}
+.dot{display:inline-block;width:13px;height:13px;border-radius:4px;vertical-align:-2px;margin-right:5px;border:1px solid var(--border)}
+.sync{font-weight:700}.sync.ok{color:#2e6b3b}.sync.warn{color:#9a6500}.sync.err{color:#b42318}
+.map{display:grid;grid-template-columns:repeat(5,minmax(230px,1fr));gap:14px}
+.street{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px;box-shadow:0 2px 7px #0000000b;min-width:0}
+.street h2{margin:0 0 10px;text-align:center;background:#17212b;color:white;border-radius:9px;padding:8px;font-size:18px}
+.sides{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}.sides.single-side{grid-template-columns:1fr}
+.side{min-width:0}.side h3{font-size:13px;text-align:center;margin:5px 0 7px;color:var(--muted)}
+.shelf{border:1px solid #9eaab5;border-radius:8px;overflow:hidden;margin-bottom:9px;background:#fafbfc}
+.shelf-title{padding:5px 7px;background:#f0f3f6;font-weight:700;text-align:center;font-size:13px;color:#000}
+.cells{display:grid;grid-template-columns:repeat(5,32px);gap:5px;padding:6px;justify-content:center}
+.cell{width:32px;height:30px;min-height:30px;border:1px solid #b9c2ca;border-radius:6px;background:var(--empty);font-size:11px;padding:0;cursor:pointer;text-align:center}
+.cell:hover{outline:2px solid var(--accent);outline-offset:1px;z-index:1}.cell.filled{background:var(--filled);font-weight:700}
+.cell.search-hit{background:var(--search)!important;color:#fff!important;border-color:#b91c1c;box-shadow:0 0 0 2px #ef444466,0 2px 8px #ef444466}
+.stats{margin:10px 0;color:var(--muted);font-size:13px}
+#modal,#specialModal{position:fixed;inset:0;background:#0007;display:none;align-items:center;justify-content:center;padding:16px;z-index:20}
+#specialModal{z-index:30}.dialog{background:white;border-radius:14px;width:min(520px,100%);padding:18px;box-shadow:0 10px 40px #0005}
+.dialog h2{margin-top:0}.addr{font-family:monospace;color:var(--accent);font-weight:700}
+label{display:block;font-size:13px;font-weight:700;margin:13px 0 6px}
+textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--border);border-radius:8px;padding:10px;font:inherit}
+.actions{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}.result{background:#fff;border:1px solid var(--border);border-radius:10px;padding:10px;margin:7px 0;cursor:pointer}
+.result strong{display:block;color:#1264d8;font-size:14px}
+.result .article{display:block;margin-top:5px;color:#222;font-size:13px;font-weight:700}
+ .result:hover{border-color:var(--accent)}
+.search-results-head{
+  font-weight:700;
+  margin:8px 0 6px;
+  color:var(--ink);
+}
+.search-result-row{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  background:#fff;
+  border:1px solid var(--border);
+  border-radius:9px;
+  padding:7px 9px;
+  margin:5px 0;
+  cursor:pointer;
+}
+.search-result-info{
+  flex:1 1 auto;
+  min-width:0;
+  overflow:hidden;
+}
+.search-result-info strong{
+  display:inline-block;
+  color:#1264d8;
+  font-size:13px;
+  margin-right:8px;
+  white-space:nowrap;
+}
+.search-result-info .article{
+  display:inline;
+  margin:0;
+  color:#222;
+  font-size:12px;
+  font-weight:700;
+  line-height:1.25;
+  overflow-wrap:anywhere;
+}
+.search-result-map-btn{
+  flex:0 0 auto;
+  border:1px solid #b8c4d0;
+  background:#f7f9fb;
+  color:#1264d8;
+  border-radius:7px;
+  padding:5px 8px;
+  font:700 11px/1.1 inherit;
+  cursor:pointer;
+  white-space:nowrap;
+}
+.search-result-map-btn:hover{background:#eaf2ff;border-color:#7da7e8}
+.plan-marker.plan-marker-focus .plan-aisle-label{
+  animation:planMarkerPulse .9s ease 2;
+}
+@keyframes planMarkerPulse{
+  0%,100%{transform:scale(1)}
+  50%{transform:scale(1.28)}
+}
+@media(max-width:520px){
+  .search-result-row{
+    gap:6px;
+    padding:6px 7px;
+    margin:4px 0;
+  }
+  .search-result-info strong{font-size:12px;margin-right:5px}
+  .search-result-info .article{font-size:11px;line-height:1.18}
+  .search-result-map-btn{
+    padding:5px 6px;
+    font-size:9px;
+  }
+  .search-results-head{margin:6px 0 4px;font-size:14px}
+}
+.special-storage{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:12px auto;max-width:1500px;padding:0 12px}
+.special-box{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:6px;box-shadow:0 2px 7px #0000000b;min-width:0}
+.special-cell{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;width:100%;min-height:54px;padding:9px;border:1px solid #b9c2ca;border-radius:8px;background:#f5f7f9;color:#25313d;cursor:pointer;font:inherit}
+.special-cell:hover{background:#eaf0f5;border-color:#8d9aa7;box-shadow:0 2px 7px #00000012}.special-cell:active{transform:scale(.985)}
+.special-cell strong{font-size:13px}.special-cell small{max-width:95%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#53606c;font-weight:400}
+.special-cell.filled{background:var(--filled);border-color:#9bbba3}.special-cell.filled strong{color:#2e5b39}
+@media(min-width:1100px){
+ main{padding:14px 18px}.map{grid-template-columns:minmax(125px,1fr) repeat(4,minmax(235px,2fr));gap:8px}
+ .street{padding:7px}.street h2{font-size:15px;padding:6px}.sides{gap:6px}.side h3{font-size:9px}
+ .shelf-title{font-size:9px;padding:3px}.cells{grid-template-columns:repeat(5,22px);gap:3px;padding:5px}
+ .cell{width:22px;min-width:22px;height:23px;min-height:23px;font-size:9px}
+}
+@media(max-width:1099px){.map{grid-template-columns:1fr}.street{width:100%}.sides{gap:8px}.cells{grid-template-columns:repeat(5,30px);gap:5px}.cell{width:30px;min-width:30px;height:29px;min-height:29px;font-size:10px}.side h3{font-size:10px}.shelf-title{font-size:10px}}
+@media(max-width:520px){main{padding:8px}.map{gap:8px}.street{padding:6px}.sides{gap:5px}.cells{grid-template-columns:repeat(5,27px);gap:4px;padding:5px}.cell{width:27px;min-width:27px;height:27px;min-height:27px}.special-storage{grid-template-columns:1fr;gap:8px;padding:0 8px}.special-cell{min-height:52px}}
+#loginScreen{
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,.92);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  z-index:99999;
+}
+
+#loginBox{
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:14px;
+  padding:30px;
+  width:360px;
+  max-width:90%;
+  text-align:center;
+  box-shadow:0 10px 40px #000;
+}
+
+#loginBox h2{
+  margin-top:0;
+}
+
+#loginBox p{
+  color:var(--muted);
+  margin-bottom:20px;
+}
+.dialog select,.dialog input[type="text"]{width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #b8c4d0;border-radius:8px;font-size:16px;background:#fff}
+#moveModal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);align-items:center;justify-content:center;z-index:10000}
+#moveModal .dialog{max-width:520px;width:calc(100% - 32px)}
+.item-meta{margin-top:10px;border:1px solid #d7dee6;border-radius:8px;background:#f7f9fb;padding:8px;font-size:12px;color:#52606d}
+.item-meta-row{padding:5px 0;border-bottom:1px solid #e1e6eb}.item-meta-row:last-child{border-bottom:0}
+.item-meta-row strong{color:#1f2937}.history-entry{border:1px solid #d7dee6;border-radius:9px;padding:9px;margin:7px 0;background:#fff;font-size:13px}
+.history-entry .history-time{color:#66717d;font-size:11px;margin-bottom:4px}
+#moveModal .move-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+#moveModal .move-grid label{margin:0}
+#moveModal .move-grid select{width:100%}
+#moveModal .move-detail{margin-top:12px}
+#moveModal .move-detail select{width:100%}
+@media(max-width:600px){
+  #moveModal .move-grid{grid-template-columns:1fr 1fr}
+  #moveModal .move-detail{grid-column:1/-1}
+}
+.history-entry .history-move{font-weight:700;color:#1f6feb}.history-entry .history-add{color:#2e6b3b;font-weight:700}.history-entry .history-remove{color:#b42318;font-weight:700}
+#historyModal{position:fixed;inset:0;background:#0007;display:none;align-items:center;justify-content:center;padding:16px;z-index:40}
+#historyModal .dialog{width:min(760px,100%);max-height:85vh;overflow:auto}
+.history-toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.history-toolbar input,.history-toolbar select{flex:1 1 180px}
+
+
+
+.mini-map-wrap{
+  background:#fff;
+  border:1px solid var(--border);
+  border-radius:14px;
+  padding:10px;
+  margin:14px auto 14px;
+  box-shadow:0 2px 7px #0000000b;
+}
+.mini-map-title{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  margin:0 2px 8px;
+}
+.mini-map-title strong{font-size:15px;color:var(--ink)}
+.mini-map-legend{font-size:11px;color:var(--muted)}
+.warehouse-plan{
+  position:relative;
+  width:100%;
+  max-width:1050px;
+  aspect-ratio:1277 / 694;
+  margin:0 auto;
+  overflow:hidden;
+  border-radius:10px;
+  background:#e7ebef;
+}
+.warehouse-plan img{
+  display:block;
+  width:100%;
+  height:100%;
+  object-fit:fill;
+  user-select:none;
+}
+#planMarkers{
+  position:absolute;
+  inset:0;
+}
+.plan-marker{
+  position:absolute;
+  transform:translate(-50%,0);
+  width:0;
+  height:0;
+  cursor:pointer;
+  z-index:3;
+}
+.plan-aisle-highlight{
+  position:absolute;
+  left:50%;
+  transform:translateX(-50%);
+  width:54px;
+  height:34px;
+  border:none;
+  background:transparent;
+  border-radius:50%;
+  box-shadow:none;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  pointer-events:auto;
+  cursor:pointer;
+  z-index:5;
+}
+.plan-aisle-label{
+  color:#fff;
+  width:44px;
+  height:30px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  box-sizing:border-box;
+  background:radial-gradient(circle,
+    rgba(255,214,65,.82) 0%,
+    rgba(255,214,65,.48) 32%,
+    rgba(255,214,65,.16) 62%,
+    rgba(255,214,65,0) 82%);
+  border:none;
+  border-radius:50%;
+  padding:0;
+  text-align:center;
+  font:800 19px/1 Arial,sans-serif;
+  white-space:nowrap;
+  text-shadow:
+    0 1px 2px rgba(0,0,0,.7),
+    0 0 5px rgba(255,224,90,.9);
+  filter:drop-shadow(0 0 4px rgba(255,214,65,.65));
+  transition:transform .12s ease, filter .12s ease;
+}
+.plan-aisle-highlight:hover .plan-aisle-label{
+  transform:scale(1.15);
+  filter:drop-shadow(0 0 7px rgba(255,214,65,.95));
+}
+
+
+
+.plan-badge .plan-side-arrow{
+  font-size:10px;
+  line-height:1;
+}
+.plan-connector{
+  position:absolute;
+  left:0;
+  top:0;
+  height:2px;
+  background:#f0c978;
+  box-shadow:0 0 5px rgba(240,201,120,.9);
+  transform-origin:0 50%;
+}
+.plan-badge:hover{
+  transform:translate(-50%,-50%) scale(1.06);
+}
+@keyframes planPulse{
+  0%,100%{opacity:.74}
+  50%{opacity:1}
+}
+@media(max-width:700px){
+  .mini-map-title{align-items:flex-start;flex-direction:column}
+  .plan-badge{font-size:9px;padding:2px 4px;border-width:1.5px}
+  .plan-badge .plan-side-arrow{font-size:8px}
+  /* МОБИЛЬНЫЙ РЕЖИМ: маленькая точка строго в центре прохода */
+  .plan-aisle-highlight{
+    width:20px !important;
+    height:16px !important;
+    left:50%;
+    transform:translateX(-50%);
+    overflow:visible;
+  }
+  .plan-aisle-label{
+    width:18px !important;
+    height:14px !important;
+    min-width:18px;
+    max-width:18px;
+    font-size:8px !important;
+    line-height:1 !important;
+    font-weight:800;
+    padding:0;
+    border-radius:50%;
+    background:radial-gradient(circle,
+      rgba(255,214,65,.72) 0%,
+      rgba(255,214,65,.28) 45%,
+      rgba(255,214,65,0) 75%) !important;
+    text-shadow:0 1px 2px rgba(0,0,0,.9);
+    filter:drop-shadow(0 0 2px rgba(255,214,65,.55));
+  }
+  .plan-aisle-highlight:hover .plan-aisle-label,
+  .plan-aisle-highlight:active .plan-aisle-label{
+    transform:none !important;
+  }
+}
+@media(max-width:1099px){
+ .mini-map{grid-template-columns:repeat(2,minmax(150px,1fr))}
+}
+@media(max-width:520px){
+ .mini-map{grid-template-columns:1fr}
+}
+</style>
+<style>
+/* Активная ячейка после кнопки «На карте»: красная и мигает,
+   пока пользователь не начнёт двигать страницу. */
+.plan-aisle-highlight.map-target-active .plan-aisle-label{
+  color:#fff !important;
+  background:radial-gradient(circle,
+    rgba(255,45,45,.98) 0%,
+    rgba(255,45,45,.68) 35%,
+    rgba(255,45,45,.22) 62%,
+    rgba(255,45,45,0) 82%) !important;
+  filter:drop-shadow(0 0 5px rgba(255,35,35,.95));
+  animation:mapTargetBlink .55s ease-in-out infinite alternate;
+}
+@keyframes mapTargetBlink{
+  from{transform:scale(1);opacity:.65}
+  to{transform:scale(1.25);opacity:1}
+}
+</style>
+<style>/* Excel import UI */.excel-modal{position:fixed;inset:0;background:rgba(0,0,0,.58);display:none;align-items:center;justify-content:center;padding:16px;z-index:10050}.excel-dialog{background:#fff;border-radius:16px;width:min(620px,100%);max-height:88vh;overflow:auto;box-shadow:0 18px 60px #0007;padding:20px;color:var(--ink)}.excel-head{display:flex;align-items:flex-start;gap:12px;margin-bottom:16px}.excel-icon{width:42px;height:42px;flex:0 0 42px;border-radius:11px;background:#eaf2ff;color:#1f6feb;display:flex;align-items:center;justify-content:center;font-size:21px}.excel-head h2{margin:0 0 4px;font-size:20px}.excel-file{font-size:12px;color:var(--muted);overflow-wrap:anywhere}.excel-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0}.excel-stat{background:#f6f8fa;border:1px solid #e0e5ea;border-radius:10px;padding:11px}.excel-stat b{display:block;font-size:18px;margin-bottom:2px}.excel-stat span{font-size:11px;color:var(--muted)}.excel-section{margin-top:14px}.excel-section-title{font-size:13px;font-weight:700;margin-bottom:7px}.excel-preview{background:#f7f9fb;border:1px solid #dce3e9;border-radius:10px;padding:9px;max-height:150px;overflow:auto;font-size:12px}.excel-preview-row{padding:7px 4px;border-bottom:1px solid #e3e8ed}.excel-preview-row:last-child{border-bottom:0}.excel-preview-row strong{color:#1264d8;margin-right:7px}.excel-warn{background:#fff8e7;border:1px solid #f2d38a;color:#805b00;border-radius:10px;padding:10px;font-size:12px}.excel-error{background:#fff0f0;border:1px solid #f2b8b8;color:#9b1c1c;border-radius:10px;padding:11px;font-size:13px}.excel-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}.excel-actions button{min-width:105px}.excel-primary{background:var(--accent)!important;color:#fff!important;border-color:var(--accent)!important}.excel-success-icon{background:#eaf8ed;color:#2e7d46}.excel-error-icon{background:#fff0f0;color:#b42318}.excel-close{margin-left:auto;border:0;background:transparent;font-size:24px;line-height:1;color:#66717d;padding:0 4px}.excel-close:hover{background:#f1f3f5}@media(max-width:520px){.excel-dialog{padding:16px}.excel-stats{grid-template-columns:1fr 1fr}.excel-stat:last-child{grid-column:1/-1}.excel-actions{flex-direction:column-reverse}.excel-actions button{width:100%}}</style>
+</head>
+<body>
+
+<div id="loginScreen" style="
+  position:fixed;
+  inset:0;
+  z-index:9999;
+  background:#121212;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  text-align:center;
+  font-family:Arial,sans-serif;
+">
+  <div style="
+    background:#1e1e1e;
+    padding:30px;
+    border-radius:16px;
+    box-shadow:0 10px 40px rgba(0,0,0,.5);
+    max-width:360px;
+    width:calc(100% - 40px);
+  ">
+    <h2 style="margin-top:0;color:#fff;">🔐 Доступ к складу</h2>
+
+    <p style="color:#aaa;margin-bottom:25px;">
+      Войдите через Google, чтобы открыть карту склада.
+    </p>
+
+    <button onclick="loginWithGoogle()" style="
+      width:100%;
+      padding:12px 18px;
+      border:0;
+      border-radius:10px;
+      background:#fff;
+      color:#222;
+      font-size:15px;
+      font-weight:600;
+      cursor:pointer;
+    ">
+      Войти через Google
+    </button>
+
+    <div id="loginError" style="
+      color:#ff6b6b;
+      margin-top:15px;
+      font-size:13px;
+      display:none;
+    "></div>
+  </div>
+</div>
+
+<div id="excelModal" class="excel-modal" aria-hidden="true"><div class="excel-dialog" role="dialog" aria-modal="true"><div class="excel-head"><div id="excelModalIcon" class="excel-icon">📥</div><div style="min-width:0;flex:1"><h2 id="excelModalTitle">Импорт Excel</h2><div id="excelModalFile" class="excel-file"></div></div><button class="excel-close" type="button" onclick="closeExcelModal()">×</button></div><div id="excelModalBody"></div><div id="excelModalActions" class="excel-actions"></div></div></div>
+<header>
+<h1>📦 Интерактивная карта склада</h1>
+<div class="sub">Адрес: улица (S1–S5) → полка (A–E слева / F–K справа)</div>
+<div class="toolbar">
+<input id="search" type="search" placeholder="🔎 Поиск детали, артикула или адреса…" style="width:100%;min-width:0">
+<button class="primary" onclick="document.getElementById('excelFile').click()">📥 Загрузить Excel</button>
+<button data-edit-only onclick="temporaryClearWarehouse()" style="background:#fee2e2;color:#991b1b;border-color:#fca5a5">🗑️ Очистить склад</button><button onclick="openHistory()">🕘 История</button>
+<input id="excelFile" type="file" accept=".xlsx,.xls" style="display:none">
+</div>
+</header>
+<main>
+<div class="legend">
+<span><i class="dot" style="background:var(--empty)"></i>пустая</span>
+<span><i class="dot" style="background:var(--filled)"></i>занята</span>
+<span>Нажми на ячейку — откроется карточка хранения.</span>
+<span id="syncStatus" class="sync warn">☁️ Подключение к Firebase…</span>
+</div>
+
+<div id="results"></div>
+<div id="miniMapWrap" class="mini-map-wrap">
+  <div class="mini-map-title">
+    <strong>🗺️ Планировка склада</strong>
+    <span id="miniMapLegend" class="mini-map-legend">При поиске подсветится нужная полка и номер ячейки</span>
+  </div>
+  <div id="warehousePlan" class="warehouse-plan">
+    <img src="warehouse-plan.png" alt="Планировка склада">
+    <div id="planMarkers"></div>
+  </div>
+</div>
+<div id="stats" class="stats"></div>
+<div id="map" class="map"></div>
+</main>
+
+<div class="special-storage">
+<section class="special-box"><button class="special-cell" id="resaleCell" onclick="openSpecial('resale')"><strong>Перекупной товар</strong><small id="resalePreview"></small></button></section>
+<section class="special-box"><button class="special-cell" id="defectCell" onclick="openSpecial('defect')"><strong>Брак</strong><small id="defectPreview"></small></button></section>
+</div>
+
+<div id="specialModal"><div class="dialog">
+<h2 id="specialTitle"></h2><label>Что находится здесь</label>
+<textarea id="specialContent" placeholder="Например: APHD4307 — 1 шт.&#10;Можно указать несколько артикулов."></textarea>
+<div class="actions"><button onclick="closeSpecial()">Отмена</button><button data-edit-only class="primary" onclick="saveSpecial()">Сохранить</button></div>
+</div></div>
+
+<div id="modal"><div class="dialog">
+<h2>Ячейка <span id="addr" class="addr"></span></h2><label>Что лежит в ячейке</label>
+<textarea id="content" placeholder="Например: APHD4307 — капот Honda, 2 шт.&#10;Можно указать несколько позиций."></textarea>
+<div id="itemMetaList" class="item-meta"></div>
+<div class="actions">
+<button onclick="closeModal()">Отмена</button>
+<button data-edit-only onclick="openMoveModal()">📦 Переместить деталь</button>
+<button data-edit-only class="primary" onclick="saveCell()">Сохранить</button>
+</div>
+</div></div>
+
+<div id="moveModal"><div class="dialog">
+<h2>📦 Переместить деталь</h2>
+
+<label>Откуда перемещаем</label>
+<div class="move-grid">
+  <div>
+    <small>Улица</small>
+    <select id="moveFromStreet"></select>
+  </div>
+  <div>
+    <small>Полка</small>
+    <select id="moveFromShelf"></select>
+  </div>
+  <div>
+    <small>Ячейка</small>
+    <select id="moveFromCell"></select>
+  </div>
+  <div class="move-detail">
+    <small>Деталь</small>
+    <select id="moveItem"></select>
+  </div>
+</div>
+
+<label style="display:block;margin-top:14px">Куда перемещаем</label>
+<div class="move-grid">
+  <div>
+    <small>Улица</small>
+    <select id="moveToStreet"></select>
+  </div>
+  <div>
+    <small>Полка</small>
+    <select id="moveToShelf"></select>
+  </div>
+  <div>
+    <small>Ячейка</small>
+    <select id="moveToCell"></select>
+  </div>
+</div>
+
+<div id="moveError" style="display:none;color:#b91c1c;margin-top:10px"></div>
+<div class="actions">
+<button onclick="closeMoveModal()">Отмена</button>
+<button data-edit-only class="primary" onclick="moveSelectedDetail()">📦 Переместить</button>
+</div>
+</div></div>
+
+<div id="historyModal"><div class="dialog">
+<h2>🕘 Подробная история склада</h2>
+<div class="history-toolbar">
+  <input id="historySearch" type="text" placeholder="Артикул или ячейка…">
+  <select id="historyType">
+    <option value="all">Все события</option>
+    <option value="move">Перемещения</option>
+    <option value="add">Добавления</option>
+    <option value="remove">Удаления</option>
+    <option value="edit">Изменения</option>
+    <option value="import">Импорт Excel</option>
+  </select>
+</div>
+<div id="historyList">Загрузка…</div>
+<div class="actions"><button onclick="closeHistory()">Закрыть</button></div>
+</div></div>
+
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/firebase@9.23.0/firebase-app-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/firebase@9.23.0/firebase-database-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/firebase@9.23.0/firebase-auth-compat.js"></script>
+<script>
+const firebaseConfig = {
+    apiKey: "AIzaSyAFd_IPlACJlpxeGsNE7Iq3dQm-VYu5Ba4",
+    authDomain: "warehouse-map-b6ed6.firebaseapp.com",
+    databaseURL: "https://warehouse-map-b6ed6-default-rtdb.europe-west1.firebasedatabase.app",
+    projectId: "warehouse-map-b6ed6",
+    storageBucket: "warehouse-map-b6ed6.firebasestorage.app",
+    messagingSenderId: "196261680344",
+    appId: "1:196261680344:web:fdd54671cf57690744f3ad",
+    measurementId: "G-7GZFEYSDSJ"
+};
+
+firebase.initializeApp(firebaseConfig);
+
+
+const auth = firebase.auth();
+const provider = new firebase.auth.GoogleAuthProvider();
+
+const db=firebase.database();
+ 
+const rootRef=db.ref("warehouse");
+ function loginWithGoogle(){
+  auth.signInWithPopup(provider)
+    .catch(error => {
+      const el = document.getElementById("loginError");
+      el.textContent = "Ошибка входа: " + error.message;
+      el.style.display = "block";
+    });
+}
+
+function applyAccessMode(){
+  const editOnlyIds=["clearWarehouseBtn","saveBtn","moveBtn"];
+  const editable=document.querySelectorAll("[data-edit-only]");
+  editable.forEach(el=>el.style.display=canEdit()?"":"none");
+}
+
+auth.onAuthStateChanged(user => {
+  const loginScreen = document.getElementById("loginScreen");
+
+  if (user) {
+    loginScreen.style.display = "none";
+  } else {
+    loginScreen.style.display = "flex";
+  }
+
+  setAccessUi();
+  initHistoryUi();
+});
+
+const letters=["A","B","C","D","E","F","G","H","J","K"];
+const leftLetters=["A","B","C","D","E"];
+const rightLetters=["F","G","H","J","K"];
+let data=createEmptyData(), specialData={resale:"",defect:""}, itemMeta={}, current=null, currentSpecial=null;
+let remoteLoaded=false;
+
+function createEmptyData(){
+ const d={};
+ for(let s=1;s<=5;s++){d["S"+s]={};for(const l of letters){d["S"+s][l]={};for(let n=1;n<=10;n++)d["S"+s][l][String(n)]="";}}
+ return d;
+}
+function address(s,l,n){return `${s}-${l}-${n}`}
+function esc(s){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[m]))}
+function hasLocalData(){
+ const d=JSON.parse(localStorage.getItem("warehouseMapData")||"null");
+ const sp=JSON.parse(localStorage.getItem("warehouseSpecialData")||"null");
+ return !!(d && Object.values(d).some(st=>Object.values(st).some(sh=>Object.values(sh).some(v=>String(v||"").trim())))) ||
+        !!(sp && Object.values(sp).some(v=>String(v||"").trim()));
+}
+function normalizeData(d){
+ const out=createEmptyData();
+ if(!d)return out;
+ for(let s=1;s<=5;s++)for(const l of letters)for(let n=1;n<=10;n++){
+  out["S"+s][l][String(n)]=d?.["S"+s]?.[l]?.[String(n)]||"";
+ }
+ return out;
+}
+function itemKey(addr,line){return addr+"|"+String(line||"").trim();}
+function normalizeMeta(m){
+ const out={};
+ if(m && typeof m==="object"){
+   for(const [k,v] of Object.entries(m)){
+     if(v && typeof v==="object") out[k]={addedAt:v.addedAt||null,updatedAt:v.updatedAt||null};
+   }
+ }
+ return out;
+}
+function nowTs(){return Date.now();}
+function formatDate(ts){
+ if(!ts)return "не зафиксирована";
+ const d=new Date(Number(ts));
+ if(Number.isNaN(d.getTime()))return "не зафиксирована";
+ return d.toLocaleString("ru-RU",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"});
+}
+function currentUserEmail(){return auth.currentUser?.email||"неизвестно";}
+
+const OWNER_EMAIL="glebur172@gmail.com";
+function canEdit(){
+  const email=String(auth.currentUser?.email||"").toLowerCase();
+  return email===OWNER_EMAIL.toLowerCase();
+}
+function setAccessUi(){
+  const editable=canEdit();
+  document.querySelectorAll("[data-edit-only]").forEach(el=>{
+    el.style.display=editable?"":"none";
+  });
+}
+
+function recordMetaChanges(addr,oldValue,newValue){
+  const oldLines=new Set(linesOf(oldValue));
+  const newLines=new Set(linesOf(newValue));
+  const added=[];
+  const removed=[];
+  const ts=nowTs();
+
+  for(const line of newLines){
+    if(!oldLines.has(line)){
+      added.push(line);
+      const key=itemKey(addr,line);
+      if(!itemMeta[key]) itemMeta[key]={addedAt:ts,updatedAt:null};
+    }
+  }
+
+  for(const line of oldLines){
+    if(!newLines.has(line)){
+      removed.push(line);
+      delete itemMeta[itemKey(addr,line)];
+    }
+  }
+
+  return {added,removed};
+}
+
+function updateMetaAfterMove(fromAddr,toAddr,detail){
+  const fromKey=itemKey(fromAddr,detail);
+  const toKey=itemKey(toAddr,detail);
+  const meta=itemMeta[fromKey]||{addedAt:null,updatedAt:null};
+  delete itemMeta[fromKey];
+  itemMeta[toKey]=meta;
+}
+
+async function writeHistory(event){
+  try{
+    if(!auth.currentUser) return false;
+    await rootRef.child("history").push({
+      ...event,
+      email:currentUserEmail(),
+      timestamp:firebase.database.ServerValue.TIMESTAMP
+    });
+    return true;
+  }catch(e){
+    console.warn("История не записана:",e);
+    return false;
+  }
+}
+
+function historyTypeLabel(type){
+  return ({
+    move:"📦 Перемещение",
+    add:"➕ Добавление",
+    remove:"➖ Удаление",
+    edit:"✏️ Изменение",
+    import:"📥 Импорт Excel",
+    importExcel:"📥 Импорт Excel",
+    clear:"🗑️ Очистка склада"
+  })[type]||"Событие";
+}
+
+function renderHistory(){
+  const list=document.getElementById("historyList");
+  if(!list)return;
+
+  const q=String(document.getElementById("historySearch")?.value||"").trim().toLowerCase();
+  const type=String(document.getElementById("historyType")?.value||"all");
+
+  let items=(window.__warehouseHistory||[]).filter(x=>{
+    if(type!=="all" && !(type==="import" && (x.type==="import" || x.type==="importExcel")) && x.type!==type)return false;
+    if(!q)return true;
+    const hay=[
+      x.detail,x.article,x.address,x.from,x.to,x.email,x.fileName
+    ].filter(Boolean).join(" ").toLowerCase();
+    return hay.includes(q);
+  });
+
+  if(!items.length){
+    list.innerHTML='<div class="result">История по заданным условиям пуста.</div>';
+    return;
+  }
+
+  list.innerHTML=items.map(x=>{
+    const time=formatDate(x.timestamp);
+    const title=historyTypeLabel(x.type);
+
+    let body="";
+    if(x.type==="move"){
+      body=`<div class="history-move">${esc(x.detail||"Деталь")}</div>
+            <div>${esc(x.from||"?")} → <strong>${esc(x.to||"?")}</strong></div>
+            ${x.addedAt?`<div>Добавлена: <strong>${esc(formatDate(x.addedAt))}</strong></div>`:""}`;
+    }else if(x.type==="add"){
+      body=`<div class="history-add">${esc(x.detail||"Деталь")}</div>
+            <div>Ячейка: <strong>${esc(x.address||"?")}</strong></div>
+            ${x.addedAt?`<div>Добавлена: <strong>${esc(formatDate(x.addedAt))}</strong></div>`:""}`;
+    }else if(x.type==="remove"){
+      body=`<div class="history-remove">${esc(x.detail||"Деталь")}</div>
+            <div>Удалена из: <strong>${esc(x.address||"?")}</strong></div>`;
+    }else if(x.type==="edit"){
+      body=`<div>${esc(x.detail||"Изменено содержимое")}</div>
+            ${x.address?`<div>Ячейка: <strong>${esc(x.address)}</strong></div>`:""}`;
+    }else if(x.type==="import"){
+      body=`<div class="history-add">📥 ${esc(x.fileName||x.detail||"Excel")}</div>
+            <div>Импортировано ячеек: <strong>${Number(x.cellsCount||0)}</strong> · записей: <strong>${Number(x.itemsCount||0)}</strong></div>
+            ${Array.isArray(x.addresses)&&x.addresses.length
+              ? `<div>Примеры адресов: ${esc(x.addresses.slice(0,12).join(", "))}${x.addresses.length>12?" …":""}</div>`
+              : ""}`;
+    }else if(x.type==="clear"){
+      body=`<div class="history-remove">Очищены обычные ячейки склада</div>
+            <div>Удалено ячеек: <strong>${Number(x.cellsCount||450)}</strong></div>`;
+    }else{
+      body=`<div>${esc(x.detail||"")}</div>`;
+    }
+
+    return `<div class="history-entry">
+      <div class="history-time">${esc(time)} · ${esc(title)} · ${esc(x.email||"неизвестно")}</div>
+      ${body}
+    </div>`;
+  }).join("");
+}
+
+async function openHistory(){
+  const modal=document.getElementById("historyModal");
+  const list=document.getElementById("historyList");
+  if(!modal||!list)return;
+
+  modal.style.display="flex";
+  list.innerHTML="Загрузка истории…";
+
+  try{
+    const snap=await rootRef.child("history")
+      .orderByChild("timestamp")
+      .limitToLast(500)
+      .once("value");
+
+    const raw=snap.val()||{};
+    window.__warehouseHistory=Object.values(raw)
+      .filter(Boolean)
+      .sort((a,b)=>Number(b.timestamp||0)-Number(a.timestamp||0));
+
+    renderHistory();
+  }catch(e){
+    console.error("Ошибка загрузки истории:",e);
+    list.innerHTML=`<div class="result">Не удалось загрузить историю.<br><small>${esc(e?.code||e?.message||e)}</small></div>`;
+  }
+}
+
+function closeHistory(){
+  const modal=document.getElementById("historyModal");
+  if(modal)modal.style.display="none";
+}
+
+function initHistoryUi(){
+  document.getElementById("historySearch")?.addEventListener("input",renderHistory);
+  document.getElementById("historyType")?.addEventListener("change",renderHistory);
+}
+
+function linesOf(value){return String(value||"").split(/\\r?\\n/).map(x=>x.trim()).filter(Boolean);}
+function metaFor(addr,line){
+ const key=itemKey(addr,line);
+ return itemMeta[key]||{addedAt:null,updatedAt:null};
+}
+function renderItemMeta(addr,value){
+ const box=document.getElementById("itemMetaList");
+ if(!box)return;
+ const lines=linesOf(value);
+ if(!lines.length){box.innerHTML="<strong>История добавления:</strong> ячейка пока пуста.";return;}
+ box.innerHTML="<strong>Даты добавления деталей</strong>"+lines.map(line=>{
+   const m=metaFor(addr,line);
+   return `<div class="item-meta-row">${esc(line)}<br><span>Добавлено: <strong>${esc(formatDate(m.addedAt))}</strong>${m.updatedAt?` · изменено: ${esc(formatDate(m.updatedAt))}`:""}</span></div>`;
+ }).join("");
+}
+function setLocal(){
+ localStorage.setItem("warehouseMapData",JSON.stringify(data));
+ localStorage.setItem("warehouseSpecialData",JSON.stringify(specialData));
+ localStorage.setItem("warehouseItemMeta",JSON.stringify(itemMeta));
+}
+function setSync(text,cls){const e=document.getElementById("syncStatus");e.textContent=text;e.className="sync "+(cls||"");}
+
+function render(){
+ const map=document.getElementById("map");map.innerHTML="";
+ let visibleOccupied=0;
+ for(let s=1;s<=5;s++){
+  const street="S"+s,box=document.createElement("section");box.className="street";
+  const isS1=street==="S1";
+  box.innerHTML=isS1
+   ? `<h2>${street}</h2><div class="sides single-side"><div class="side"><h3>Левая сторона · A–E</h3></div></div>`
+   : `<h2>${street}</h2><div class="sides"><div class="side"><h3>Левая сторона · A–E</h3></div><div class="side"><h3>Правая сторона · F–K</h3></div></div>`;
+  const sides=box.querySelectorAll(".side");
+  leftLetters.forEach(l=>{visibleOccupied+=shelf(box,s,l,sides[0]);});
+  if(!isS1)rightLetters.forEach(l=>{visibleOccupied+=shelf(box,s,l,sides[1]);});
+  map.appendChild(box);
+ }
+ document.getElementById("stats").textContent=`Занято: ${visibleOccupied} из 450 ячеек`;
+ renderSpecial();
+}
+function shelf(box,s,l,parent){
+ const sh=document.createElement("div");sh.className="shelf";
+ sh.innerHTML=`<div class="shelf-title">Полка ${l}</div><div class="cells"></div>`;
+ const cells=sh.querySelector(".cells"),q=(document.getElementById("search")?.value||"").trim().toLowerCase();
+ let occupied=0;
+ for(let n=1;n<=10;n++){
+  const val=data["S"+s][l][String(n)]||"",a=address("S"+s,l,n);
+  if(val.trim())occupied++;
+  const match=q&&(a.toLowerCase().includes(q)||val.toLowerCase().includes(q));
+  const c=document.createElement("button");
+  c.className="cell"+(val.trim()?" filled":"")+(match?" search-hit":"");
+  c.id=`cell-S${s}-${l}-${n}`;
+  c.title=a+(val.trim()?` — ${val}`:"");c.innerHTML=`<b>${n}</b>`;
+  c.onclick=()=>openModal("S"+s,l,String(n));cells.appendChild(c);
+ }
+ parent.appendChild(sh);return occupied;
+}
+function openModal(s,l,n){
+ clearMapTarget();
+ current={s,l,n};document.getElementById("addr").textContent=address(s,l,n);
+ document.getElementById("content").value=data[s][l][n]||"";
+ renderItemMeta(address(s,l,n),data[s][l][n]||"");
+ document.getElementById("modal").style.display="flex";
+ setTimeout(()=>document.getElementById("content").focus(),50);
+}
+function closeModal(){document.getElementById("modal").style.display="none";current=null}
+function moveAllowedShelves(street){
+  return String(street)==="S1" ? leftLetters : letters;
+}
+
+function fillMoveShelves(selectId, street, preferred){
+  const select=document.getElementById(selectId);
+  if(!select)return;
+  const allowed=moveAllowedShelves(street);
+  select.innerHTML="";
+  allowed.forEach(letter=>{
+    const opt=document.createElement("option");
+    opt.value=letter;
+    opt.textContent=`Полка ${letter}`;
+    select.appendChild(opt);
+  });
+  if(preferred && allowed.includes(preferred)) select.value=preferred;
+}
+
+function fillMoveCells(selectId, preferred){
+  const select=document.getElementById(selectId);
+  if(!select)return;
+  select.innerHTML="";
+  for(let n=1;n<=10;n++){
+    const opt=document.createElement("option");
+    opt.value=String(n);
+    opt.textContent=`Ячейка ${n}`;
+    select.appendChild(opt);
+  }
+  if(preferred) select.value=String(preferred);
+}
+
+function getMoveSource(){
+  const s=document.getElementById("moveFromStreet").value;
+  const l=document.getElementById("moveFromShelf").value;
+  const n=document.getElementById("moveFromCell").value;
+  return {s,l,n};
+}
+
+function getMoveDestination(){
+  const s=document.getElementById("moveToStreet").value;
+  const l=document.getElementById("moveToShelf").value;
+  const n=document.getElementById("moveToCell").value;
+  return {s,l,n};
+}
+
+function fillMoveItems(preferredIndex=0){
+  const source=getMoveSource();
+  const select=document.getElementById("moveItem");
+  const error=document.getElementById("moveError");
+  const value=String(data?.[source.s]?.[source.l]?.[source.n]||"").trim();
+  const lines=linesOf(value);
+
+  select.innerHTML="";
+  if(!lines.length){
+    const opt=document.createElement("option");
+    opt.value="";
+    opt.textContent="В этой ячейке нет деталей";
+    select.appendChild(opt);
+    return;
+  }
+
+  lines.forEach((line,i)=>{
+    const opt=document.createElement("option");
+    opt.value=String(i);
+    opt.textContent=line;
+    select.appendChild(opt);
+  });
+
+  select.value=String(Math.min(Math.max(Number(preferredIndex)||0,0),lines.length-1));
+  error.style.display="none";
+  error.textContent="";
+}
+
+function openMoveModal(){
+  if(!canEdit()){
+    alert("Режим просмотра: перемещение доступно только владельцу.");
+    return;
+  }
+
+  const fromStreet=document.getElementById("moveFromStreet");
+  const fromShelf=document.getElementById("moveFromShelf");
+  const fromCell=document.getElementById("moveFromCell");
+  const toStreet=document.getElementById("moveToStreet");
+  const toShelf=document.getElementById("moveToShelf");
+  const toCell=document.getElementById("moveToCell");
+  const error=document.getElementById("moveError");
+
+  error.style.display="none";
+  error.textContent="";
+
+  fromStreet.innerHTML="";
+  toStreet.innerHTML="";
+  for(let s=1;s<=5;s++){
+    for(const select of [fromStreet,toStreet]){
+      const opt=document.createElement("option");
+      opt.value=`S${s}`;
+      opt.textContent=`Улица S${s}`;
+      select.appendChild(opt);
+    }
+  }
+
+  let initial={s:"S1",l:"A",n:"1"};
+  if(current){
+    initial={s:current.s,l:current.l,n:String(current.n)};
+  }
+
+  fromStreet.value=initial.s;
+  fillMoveShelves("moveFromShelf",initial.s,initial.l);
+  fillMoveCells("moveFromCell",initial.n);
+
+  toStreet.value=initial.s;
+  fillMoveShelves("moveToShelf",initial.s,initial.l);
+  fillMoveCells("moveToCell",initial.n);
+
+  fillMoveItems(0);
+
+  fromStreet.onchange=()=>{
+    fillMoveShelves("moveFromShelf",fromStreet.value);
+    fillMoveCells("moveFromCell",1);
+    fillMoveItems(0);
+  };
+  fromShelf.onchange=()=>fillMoveItems(0);
+  fromCell.onchange=()=>fillMoveItems(0);
+
+  toStreet.onchange=()=>{
+    fillMoveShelves("moveToShelf",toStreet.value);
+    fillMoveCells("moveToCell",1);
+  };
+
+  document.getElementById("moveModal").style.display="flex";
+}
+
+function closeMoveModal(){
+  document.getElementById("moveModal").style.display="none";
+}
+
+async function moveSelectedDetail(){
+  if(!canEdit()){
+    alert("Режим просмотра: перемещение доступно только владельцу.");
+    return;
+  }
+
+  const error=document.getElementById("moveError");
+  error.style.display="none";
+  error.textContent="";
+
+  const source=getMoveSource();
+  const dest=getMoveDestination();
+  const sourceValue=String(data?.[source.s]?.[source.l]?.[source.n]||"").trim();
+  const lines=linesOf(sourceValue);
+  const index=Number(document.getElementById("moveItem").value);
+
+  if(!lines.length || !Number.isInteger(index) || !lines[index]){
+    error.textContent="В выбранной ячейке нет детали для перемещения.";
+    error.style.display="block";
+    return;
+  }
+
+  const sourceAddress=address(source.s,source.l,source.n);
+  const destAddress=address(dest.s,dest.l,dest.n);
+
+  if(sourceAddress===destAddress){
+    error.textContent="Новая ячейка совпадает с текущей.";
+    error.style.display="block";
+    return;
+  }
+
+  const detail=lines[index];
+  const destValue=String(data?.[dest.s]?.[dest.l]?.[dest.n]||"").trim();
+  const newSourceLines=lines.filter((_,i)=>i!==index);
+  const newSourceValue=newSourceLines.join("\n");
+  const newDestValue=destValue ? `${destValue}\n${detail}` : detail;
+
+  const oldMeta=itemMeta[itemKey(sourceAddress,detail)]||{addedAt:null,updatedAt:null};
+
+  try{
+    // Сначала готовим изменения локально, но НЕ считаем их сохранёнными,
+    // пока Firebase не подтвердит атомарное обновление.
+    const nextMeta={...itemMeta};
+    delete nextMeta[itemKey(sourceAddress,detail)];
+    nextMeta[itemKey(destAddress,detail)]=oldMeta;
+
+    const historyKey=rootRef.child("history").push().key;
+    if(!historyKey) throw new Error("Не удалось создать запись истории");
+
+    const updates={};
+    updates[`cells/${source.s}/${source.l}/${source.n}`]=newSourceValue;
+    updates[`cells/${dest.s}/${dest.l}/${dest.n}`]=newDestValue;
+    updates["itemMeta"]=nextMeta;
+    updates[`history/${historyKey}`]={
+      type:"move",
+      detail,
+      article:detail,
+      from:sourceAddress,
+      to:destAddress,
+      addedAt:oldMeta.addedAt||null,
+      email:currentUserEmail(),
+      timestamp:firebase.database.ServerValue.TIMESTAMP
+    };
+
+    await rootRef.update(updates);
+
+    // Только после успешного Firebase update меняем локальные данные.
+    itemMeta=nextMeta;
+    data[source.s][source.l][source.n]=newSourceValue;
+    data[dest.s][dest.l][dest.n]=newDestValue;
+    setLocal();
+
+    render();
+    doSearch();
+    setSync("📦 Деталь перемещена · история записана","ok");
+
+    closeMoveModal();
+    if(current){
+      document.getElementById("modal").style.display="none";
+      current=null;
+    }
+
+    alert(`Готово!\n\n${detail}\n\n${sourceAddress} → ${destAddress}`);
+  }catch(e){
+    console.error("Ошибка перемещения:",e);
+    const code=e?.code||"";
+    error.textContent=code==="PERMISSION_DENIED"
+      ? "Firebase запретил перемещение. Проверь, что ты вошёл владельцем."
+      : `Не удалось переместить деталь: ${e?.message||"ошибка Firebase"}`;
+    error.style.display="block";
+    setSync("⚠️ Ошибка перемещения","err");
+  }
+}
+
+
+async function saveCell(){
+  if(!canEdit()){
+    alert("Режим просмотра: редактирование доступно только владельцу.");
+    return;
+  }
+  if(!current)return;
+
+  const addr=address(current.s,current.l,current.n);
+  const oldValue=String(data[current.s][current.l][current.n]||"").trim();
+  const value=document.getElementById("content").value.trim();
+  const changes=recordMetaChanges(addr,oldValue,value);
+  const updates={};
+  updates["cells/"+current.s+"/"+current.l+"/"+current.n]=value;
+  updates["itemMeta"]=itemMeta;
+
+  try{
+    await rootRef.update(updates);
+
+    data[current.s][current.l][current.n]=value;
+    setLocal();
+
+    for(const detail of changes.added){
+      const meta=itemMeta[itemKey(addr,detail)]||{addedAt:nowTs(),updatedAt:null};
+      await writeHistory({
+        type:"add",
+        detail,
+        article:detail,
+        address:addr,
+        addedAt:meta.addedAt
+      });
+    }
+
+    for(const detail of changes.removed){
+      await writeHistory({
+        type:"remove",
+        detail,
+        article:detail,
+        address:addr
+      });
+    }
+
+    if(!changes.added.length && !changes.removed.length && oldValue!==value){
+      const ts=nowTs();
+      for(const line of linesOf(value)){
+        const key=itemKey(addr,line);
+        if(itemMeta[key])itemMeta[key].updatedAt=ts;
+      }
+      await rootRef.child("itemMeta").set(itemMeta);
+      setLocal();
+
+      await writeHistory({
+        type:"edit",
+        detail:"Изменено содержимое ячейки",
+        address:addr,
+        oldValue,
+        newValue:value
+      });
+    }
+
+    render();
+    doSearch();
+    setSync("☁️ Синхронизировано · история записана","ok");
+  }catch(e){
+    console.error(e);
+    setSync("⚠️ Ошибка синхронизации","err");
+  }
+  closeModal();
+}
+
+
+function openSpecial(type){
+ currentSpecial=type;document.getElementById("specialTitle").textContent=type==="resale"?"Перекупной товар":"Брак";
+ document.getElementById("specialContent").value=specialData[type]||"";
+ document.getElementById("specialModal").style.display="flex";
+ setTimeout(()=>document.getElementById("specialContent").focus(),50);
+}
+function closeSpecial(){document.getElementById("specialModal").style.display="none";currentSpecial=null}
+async function saveSpecial(){
+  if(!canEdit()){
+    alert("Режим просмотра: редактирование доступно только владельцу.");
+    return;
+  }
+  if(!currentSpecial)return;
+
+  const value=document.getElementById("specialContent").value.trim();
+  const oldValue=specialData[currentSpecial]||"";
+  specialData[currentSpecial]=value;
+
+  try{
+    await rootRef.child("special").child(currentSpecial).set(value);
+    setLocal();
+
+    if(oldValue!==value){
+      await writeHistory({
+        type:"edit",
+        detail:currentSpecial==="resale"?"Перекупной товар":"Брак",
+        address:currentSpecial
+      });
+    }
+
+    renderSpecial();
+    doSearch();
+    setSync("☁️ Синхронизировано · история записана","ok");
+  }catch(e){
+    console.error(e);
+    setSync("⚠️ Ошибка синхронизации","err");
+  }
+  closeSpecial();
+}
+
+
+function renderSpecial(){
+ for(const [type,id,preview] of [["resale","resaleCell","resalePreview"],["defect","defectCell","defectPreview"]]){
+  const v=specialData[type]||"";document.getElementById(id).classList.toggle("filled",!!v);document.getElementById(preview).textContent=v;
+ }
+}
+async function temporaryClearWarehouse(){
+  if(!canEdit()){
+    alert("Режим просмотра: очистка доступна только владельцу.");
+    return;
+  }
+
+  const first=confirm(
+    "⚠️ ВРЕМЕННАЯ КНОПКА\n\n"+
+    "Удалить содержимое всех 450 обычных ячеек склада?\n\n"+
+    "После этого можно будет загрузить новый Excel."
+  );
+  if(!first)return;
+
+  const second=confirm(
+    "Точно очистить ВСЕ 450 ячеек?\n\n"+
+    "История при этом сохранится."
+  );
+  if(!second)return;
+
+  try{
+    const emptyCells=createEmptyData();
+    const oldCount=Object.values(data)
+      .flatMap(st=>Object.values(st))
+      .flatMap(sh=>Object.values(sh))
+      .filter(v=>String(v||"").trim()).length;
+
+    itemMeta={};
+    await rootRef.update({
+      cells:emptyCells,
+      itemMeta:{}
+    });
+
+    data=emptyCells;
+    setLocal();
+    await writeHistory({
+      type:"clear",
+      detail:"Полная очистка обычных ячеек склада",
+      cellsCount:450,
+      itemsCount:oldCount
+    });
+
+    render();
+    doSearch();
+    setSync("🗑️ Склад очищен · история сохранена","ok");
+    alert("Готово! Все 450 обычных ячеек очищены.\n\nИстория изменений сохранена.");
+  }catch(e){
+    console.error("Ошибка очистки склада:",e);
+    setSync("⚠️ Ошибка очистки","err");
+    alert("Не удалось очистить склад.\n\n"+(e?.code||e?.message||e));
+  }
+}
+
+
+async function clearAll(){
+ if(!confirm("Удалить содержимое всех видимых 450 ячеек?"))return;
+ data=createEmptyData();specialData={resale:"",defect:""};setLocal();render();doSearch();
+ try{await rootRef.set({cells:data,special:specialData});setSync("☁️ Синхронизировано","ok");}
+ catch(e){setSync("⚠️ Ошибка синхронизации","err");console.error(e)}
+}
+function normalizeSearchText(value){
+  return String(value||"")
+    .toLowerCase()
+    .replace(/ё/g,"е")
+    .replace(/й/g,"и")
+    .replace(/[^a-zа-я0-9]+/g," ")
+    .trim();
+}
+
+function translitToLatin(value){
+  const map={
+    "а":"a","б":"b","в":"v","г":"g","д":"d","е":"e","ж":"zh","з":"z","и":"i","й":"y",
+    "к":"k","л":"l","м":"m","н":"n","о":"o","п":"p","р":"r","с":"s","т":"t","у":"u",
+    "ф":"f","х":"h","ц":"c","ч":"ch","ш":"sh","щ":"sch","ъ":"","ы":"y","ь":"","э":"e",
+    "ю":"yu","я":"ya"
+  };
+  return normalizeSearchText(value).split("").map(ch=>map[ch]??ch).join("");
+}
+
+function fixKeyboardLayout(value){
+  const ru="йцукенгшщзхъфывапролджэячсмитьбю";
+  const en="qwertyuiop[]asdfghjkl;'zxcvbnm,.";
+  const text=String(value||"").toLowerCase();
+  return text.split("").map(ch=>{
+    const i=ru.indexOf(ch);
+    return i>=0 ? en[i] : ch;
+  }).join("");
+}
+
+function searchTokens(value){
+  return normalizeSearchText(value)
+    .split(/\s+/)
+    .filter(Boolean);
+}
+const searchAliases={
+  "капот":["капот","hood","bonnet"],
+  "крыло":["крыло","wing"],
+  "бампер":["бампер","bumper"],
+  "дверь":["дверь","door"],
+  "двери":["дверь","двери","door"],
+  "фара":["фара","headlight"],
+  "фонарь":["фонарь","фонар","tail light","taillight"],
+  "решетка":["решетка","решётка","grille"],
+
+  "мазда":["мазда","mazda","mz"],
+  "хонда":["хонда","honda","hd"],
+  "тойота":["тойота","toyota","ty"],
+  "ниссан":["ниссан","nissan","ns"],
+  "форд":["форд","ford","fd"],
+  "ауди":["ауди","audi","au"],
+  "бмв":["бмв","bmw"],
+  "фольксваген":["фольксваген","volkswagen","vw"],
+  "шевроле":["шевроле","chevrolet","chevy"],
+  "мерседес":["мерседес","mercedes","mb"],
+
+  "лексус":["лексус","lexus","lx"],
+  "инфинити":["инфинити","infiniti","inf"],
+  "акура":["акура","acura","ac"],
+  "субару":["субару","subaru","su"],
+  "митсубиси":["митсубиси","mitsubishi","mits"],
+  "сузуки":["сузуки","suzuki","sz"],
+  "исузу":["исузу","isuzu","iz"],
+  "дайхатсу":["дайхатсу","daihatsu","dh"],
+  "киа":["киа","kia","ki"],
+  "хендай":["хендай","hyundai","hy"],
+  "генезис":["генезис","genesis","gn"],
+  "дэу":["дэу","daewoo","dw"],
+  "ренo":["рено","renault","ren"],
+  "пежо":["пежо","peugeot","pg"],
+  "ситроен":["ситроен","citroen","citroën","ct"],
+  "фиат":["фиат","fiat","ft"],
+  "альфа ромео":["альфа ромео","alfa romeo","alfa","ar"],
+  "вольво":["вольво","volvo","vo"],
+  "сааб":["сааб","saab","sa"],
+  "ягуар":["ягуар","jaguar","jg"],
+  "ланд ровер":["ланд ровер","land rover","lr"],
+  "ровер":["ровер","rover","rv"],
+  "джип":["джип","jeep","jp"],
+  "додж":["додж","dodge","dg"],
+  "крайслер":["крайслер","chrysler","ch"],
+  "крайслер":["крайслер","chrysler","ch"],
+  "кадиллак":["кадиллак","cadillac","cad"],
+  "линкольн":["линкольн","lincoln","ln"],
+  "бьюик":["бьюик","buick","bk"],
+  "понтиак":["понтиак","pontiac","pt"],
+  "саат":["саат","seat","st"],
+  "шкода":["шкода","skoda","sk"],
+  "опель":["опель","opel","op"],
+  "порше":["порше","porsche","pr"],
+  "бентли":["бентли","bentley","be"],
+  "масерати":["масерати","maserati","ma"],
+  "ламборгини":["ламборгини","lamborghini","lm"],
+  "феррари":["феррари","ferrari","fr"],
+  "тесла":["тесла","tesla","ts"],
+  "рoлс рoйс":["роллс ройс","rolls royce","rr"],
+  "мини":["мини","mini"],
+  "мг":["мг","mg"],
+  "дженерал моторс":["дженерал моторс","general motors","gm"],
+
+  "лада":["лада","лада","lada","ваз","vaz"],
+  "ваз":["ваз","vaz","лада","lada"],
+  "газ":["газ","gaz"],
+  "уаз":["уаз","uaz"],
+  "москвич":["москвич","moskvich"],
+  "зил":["зил","zil"],
+  "камаз":["камаз","kamaz"],
+  "луаз":["луаз","luaz"]
+};
+
+function levenshtein(a,b){
+  if(a===b)return 0;
+  if(!a)return b.length;
+  if(!b)return a.length;
+  if(a.length>b.length)[a,b]=[b,a];
+
+  let prev=Array.from({length:a.length+1},(_,i)=>i);
+
+  for(let j=1;j<=b.length;j++){
+    const cur=[j];
+    for(let i=1;i<=a.length;i++){
+      cur[i]=Math.min(
+        cur[i-1]+1,
+        prev[i]+1,
+        prev[i-1]+(a[i-1]===b[j-1]?0:1)
+      );
+    }
+    prev=cur;
+  }
+  return prev[a.length];
+}
+
+function expandSearchToken(token){
+  const base=normalizeSearchText(token);
+  const result=new Set([
+    base,
+    translitToLatin(base),
+    normalizeSearchText(fixKeyboardLayout(base))
+  ]);
+
+  // Ищем совпадение в обе стороны:
+  // "мазда" -> Mazda -> MZ
+  // "Mazda" -> мазда -> MZ
+  // "MZ" -> Mazda -> мазда
+  for(const [key,aliases] of Object.entries(searchAliases)){
+    const all=[key,...aliases].map(normalizeSearchText);
+
+    if(all.includes(base)){
+      all.forEach(x=>result.add(x));
+    }
+  }
+
+  return [...result].filter(Boolean);
+}
+
+const brandCodeAliases={
+  "mz":["mazda","мазда","mz"],
+  "hd":["honda","хонда","hd"],
+  "ty":["toyota","тойота","ty"],
+  "ns":["nissan","ниссан","ns"],
+  "fd":["ford","форд","fd"],
+  "au":["audi","ауди","au"],
+  "bm":["bmw","бмв","bm"],
+  "vw":["volkswagen","фольксваген","vw"],
+  "ch":["chevrolet","шевроле","ch","chevy"],
+  "mb":["mercedes","мерседес","mb"],
+  "lx":["lexus","лексус","lx"],
+  "inf":["infiniti","инфинити","inf"],
+  "ac":["acura","акура","ac"],
+  "su":["subaru","субару","su"],
+  "ki":["kia","киа","ki"],
+  "hy":["hyundai","хендай","hy"],
+  "op":["opel","опель","op"],
+  "sk":["skoda","шкода","sk"],
+  "pg":["peugeot","пежо","pg"],
+  "ren":["renault","рено","ren"],
+  "ft":["fiat","фиат","ft"]
+};
+
+const partCodeAliases={
+  "1":["крыло левое","левое крыло","крыло","wing"],
+  "2":["крыло правое","правое крыло","крыло","wing"],
+  "3":["капот","hood","bonnet"],
+  "6":["бампер","передний бампер","bumper"],
+  "7":["задний бампер","задний бампер","rear bumper","бампер","bumper"]
+};
+
+function addCodeMeaning(text){
+  let result=String(text||"");
+  const codes=result.match(/AP[A-ZА-Я]{2}\d{4}/gi)||[];
+
+  for(const code of codes){
+    const upper=code.toUpperCase();
+    const brand=upper.slice(2,4).toLowerCase();
+    const part=upper.slice(-1);
+
+    if(brandCodeAliases[brand]){
+      result+=" "+brandCodeAliases[brand].join(" ");
+    }
+
+    if(partCodeAliases[part]){
+      result+=" "+partCodeAliases[part].join(" ");
+    }
+  }
+
+  return result;
+}
+
+const partTypeAliases={
+  "капот":["капот","hood","bonnet"],
+  "крыло":["крыло","wing","левое крыло","правое крыло"],
+  "левое крыло":["левое крыло","крыло","left wing"],
+  "правое крыло":["правое крыло","крыло","right wing"],
+  "бампер":["бампер","bumper","передний бампер","front bumper","задний бампер","rear bumper"],
+  "передний бампер":["бампер","передний бампер","front bumper"],
+  "задний бампер":["бампер","задний бампер","rear bumper"],
+  "дверь":["дверь","двери","door"],
+  "фара":["фара","headlight"],
+  "фонарь":["фонарь","фонар","tail light","taillight"],
+  "решетка":["решетка","решётка","grille"]
+};
+
+const partCodeTypes={
+  "1":["левое крыло","крыло","left wing"],
+  "2":["правое крыло","крыло","right wing"],
+  "3":["капот","hood","bonnet"],
+  "6":["бампер","передний бампер","bumper","front bumper"],
+  "7":["бампер","задний бампер","rear bumper","bumper"]
+};
+
+function isArticleLikeToken(token){
+  const compact=normalizeSearchText(token).replace(/[^a-z0-9]/g,"");
+  // Артикулы/коды вроде mz0903, apmz0903, 27c103, 81b103-j.
+  // Для них нельзя использовать агрессивный fuzzy-поиск:
+  // mz0903 не должен совпадать с mz0203c только из-за похожих цифр.
+  return /^(?=.*[a-z])(?=.*\\d)[a-z0-9]+$/.test(compact) && compact.length>=4;
+}
+
+function articleTokenMatchesText(token,text){
+  const q=normalizeSearchText(token).replace(/[^a-z0-9]/g,"");
+  if(!q)return false;
+
+  const normalized=normalizeSearchText(text);
+  const words=normalized
+    .split(/[^a-z0-9]+/)
+    .map(x=>x.trim())
+    .filter(Boolean);
+
+  // Сначала строгое совпадение / вхождение.
+  // Это позволяет mz0903 найти APMZ0903, но не mz0203c.
+  if(words.some(w=>w===q || w.includes(q) || q.includes(w))) return true;
+
+  // Разрешаем ровно одну опечатку только для достаточно длинного кода.
+  // При этом сравниваем именно код, а не отдельные цифры в конце.
+  if(q.length>=5){
+    for(const w of words){
+      if(Math.abs(w.length-q.length)>1)continue;
+      if(levenshtein(q,w)<=1)return true;
+    }
+  }
+
+  return false;
+}
+
+function queryTokenMatchesText(token,text){
+  const normalized=normalizeSearchText(text);
+  const textTokens=normalized.split(/\s+/).filter(Boolean);
+  const compact=normalized.replace(/\s+/g,"");
+
+  // Важный приоритет: если пользователь ввёл артикул/код,
+  // не применяем общий fuzzy-поиск по 2-3 случайным цифрам.
+  if(isArticleLikeToken(token)){
+    return articleTokenMatchesText(token,text);
+  }
+
+  for(const variant of expandSearchToken(token)){
+    if(!variant)continue;
+    if(compact.includes(variant))return true;
+
+    for(const word of textTokens){
+      if(word.startsWith(variant))return true;
+
+      if(variant.length>=3 && word.length>=3){
+        const distance=levenshtein(variant,word);
+        const maxDistance=variant.length<=4?1:variant.length<=7?2:3;
+        if(distance<=maxDistance)return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+function tokenIsPartType(token){
+  const base=normalizeSearchText(token);
+  for(const [name,aliases] of Object.entries(partTypeAliases)){
+    if([name,...aliases].some(x=>normalizeSearchText(x)===base))return name;
+  }
+  return null;
+}
+
+function tokenIsBrand(token){
+  const base=normalizeSearchText(token);
+
+  for(const [brand,aliases] of Object.entries(searchAliases)){
+    if([brand,...aliases].some(x=>normalizeSearchText(x)===base)){
+      return brand;
+    }
+  }
+
+  return null;
+}
+
+function codePartTypes(value){
+  const result=new Set();
+  const matches=String(value||"").toUpperCase().match(/\bAP[A-Z]{2}\d+\b/g)||[];
+
+  for(const code of matches){
+    const last=code.slice(-1);
+    (partCodeTypes[last]||[]).forEach(x=>result.add(normalizeSearchText(x)));
+  }
+
+  return result;
+}
+
+function brandMatchesValue(brand,value){
+  const raw=String(value||"");
+  const text=normalizeSearchText(raw);
+
+  // Для марки используем только два надёжных источника:
+  // 1) название марки целиком в описании;
+  // 2) код марки в артикуле APXX...
+  //
+  // Короткие коды вроде FD/HD/TY не ищем как обычный текст:
+  // иначе они могут случайно совпасть с частью другого слова.
+  const brandNames={
+    мазда:["mazda","мазда"],
+    хонда:["honda","хонда"],
+    тойота:["toyota","тойота"],
+    ниссан:["nissan","ниссан"],
+    форд:["ford","форд"],
+    ауди:["audi","ауди"],
+    бмв:["bmw","бмв"],
+    фольксваген:["volkswagen","фольксваген"],
+    шевроле:["chevrolet","шевроле","chevy"],
+    мерседес:["mercedes","мерседес"],
+    лексус:["lexus","лексус"],
+    инфинити:["infiniti","инфинити"],
+    акура:["acura","акура"],
+    субару:["subaru","субару"],
+    киа:["kia","киа"],
+    хендай:["hyundai","хендай"],
+    опель:["opel","опель"],
+    шкода:["skoda","шкода"],
+    пежо:["peugeot","пежо"],
+    рено:["renault","рено"],
+    фиат:["fiat","фиат"]
+  };
+
+  const names=brandNames[brand]||[brand];
+
+  // Слово марки в ОПИСАНИИ.
+  const words=text.split(/\s+/).filter(Boolean);
+  if(names.some(name=>{
+    const n=normalizeSearchText(name);
+    return words.includes(n);
+  })) return true;
+
+  // Код марки в артикуле: AP + код + цифры/буквы.
+  // Например APFD1403 = Ford, APMZ0903 = Mazda.
+  const brandCodes={
+    мазда:"MZ",
+    хонда:"HD",
+    тойота:"TY",
+    ниссан:"NS",
+    форд:"FD",
+    ауди:"AU",
+    бмв:"BM",
+    фольксваген:"VW",
+    шевроле:"CH",
+    мерседес:"MB",
+    лексус:"LX",
+    инфинити:"INF",
+    акура:"AC",
+    субару:"SU",
+    киа:"KI",
+    хендай:"HY",
+    опель:"OP",
+    шкода:"SK",
+    пежо:"PG",
+    рено:"REN",
+    фиат:"FT"
+  };
+
+  const code=brandCodes[brand];
+  if(code){
+    const re=new RegExp("\\bAP"+code+"[A-Z0-9]*\\d+\\b","i");
+    if(re.test(raw)) return true;
+  }
+
+  return false;
+}
+function partMatchesValue(part,value){
+  const types=codePartTypes(value);
+
+  if(types.size){
+    const aliases=partTypeAliases[part]||[part];
+    return aliases.some(x=>types.has(normalizeSearchText(x)));
+  }
+
+  const aliases=partTypeAliases[part]||[part];
+  return aliases.some(x=>queryTokenMatchesText(x,value));
+}
+
+function searchScore(queryTokens,text){
+  let score=0;
+
+  for(const rawToken of queryTokens){
+    const brand=tokenIsBrand(rawToken);
+    const part=tokenIsPartType(rawToken);
+
+    if(brand){
+      // Марка должна совпасть строго по названию в этой строке
+      // или по коду марки в её артикуле.
+      if(brandMatchesValue(brand,text)) score+=120;
+      else return 0;
+      continue;
+    }
+
+    if(part){
+      if(partMatchesValue(part,text)) score+=120;
+      else return 0;
+      continue;
+    }
+
+    if(queryTokenMatchesText(rawToken,text)) score+=80;
+    else return 0;
+  }
+
+  return score;
+}
+
+function parseExcelLocations(value){
+  const result=[];
+  const text=String(value||"").toUpperCase();
+
+  // 1С может писать:
+  // S5, A3
+  // S5, A2, A3
+  // (S5, A3) (S4, F3)
+  // S4, F6,F7,F8
+  //
+  // Ищем каждую улицу S1-S5, а затем все пары
+  // "буква полки + номер" до следующей улицы.
+  const streetRe=/S\s*([1-5])/gi;
+  const streets=[...text.matchAll(streetRe)];
+
+  for(let i=0;i<streets.length;i++){
+    const street=Number(streets[i][1]);
+    const from=streets[i].index+streets[i][0].length;
+    const to=i+1<streets.length ? streets[i+1].index : text.length;
+    const part=text.slice(from,to);
+
+    const shelfRe=/([A-EFGHJK])\s*(?:[-–—])?\s*([0-9]{1,2})/gi;
+
+    for(const match of part.matchAll(shelfRe)){
+      const letter=match[1].toUpperCase();
+      const num=Number(match[2]);
+
+      if(num<1 || num>10)continue;
+
+      // На S1 у текущей карты есть только левая сторона A-E.
+      if(street===1 && !leftLetters.includes(letter))continue;
+
+      if(street>=2 && street<=5 && !letters.includes(letter))continue;
+
+      result.push(`S${street}-${letter}-${num}`);
+    }
+  }
+
+  return [...new Set(result)];
+}
+
+function excelCellText(value){
+  if(value===null || value===undefined)return "";
+  return String(value).trim();
+}
+
+function findExcelColumns(row,columnMap){
+  const cells=(row||[]).map(excelCellText);
+
+  const descIndex=columnMap?.description ?? (cells.length===3 ? 0 : 1);
+  const articleIndex=columnMap?.article ?? (cells.length===3 ? 1 : 2);
+  const locationIndex=columnMap?.location ?? (cells.length===3 ? 2 : 3);
+
+  return {
+    description: cells[descIndex]||"",
+    article: cells[articleIndex]||"",
+    location: cells[locationIndex]||""
+  };
+}
+
+let excelModalCloseHandler=null;
+function showExcelModal(cfg){const m=document.getElementById("excelModal");document.getElementById("excelModalTitle").textContent=cfg.title||"Импорт Excel";document.getElementById("excelModalFile").textContent=cfg.fileName||"";document.getElementById("excelModalBody").innerHTML=cfg.body||"";document.getElementById("excelModalIcon").textContent=cfg.icon||"📥";document.getElementById("excelModalIcon").className="excel-icon "+(cfg.iconClass||"");document.getElementById("excelModalActions").innerHTML=(cfg.actions||[]).map((a,i)=>`<button type="button" class="${a.className||""}" data-excel-action="${i}">${a.label}</button>`).join("");excelModalCloseHandler=cfg.onClose||null;m.style.display="flex";m.setAttribute("aria-hidden","false");(cfg.actions||[]).forEach((a,i)=>m.querySelector(`[data-excel-action="${i}"]`)?.addEventListener("click",a.onClick));}
+function hideExcelModal(){const m=document.getElementById("excelModal");if(m){m.style.display="none";m.setAttribute("aria-hidden","true")}}
+function closeExcelModal(){const handler=excelModalCloseHandler;excelModalCloseHandler=null;hideExcelModal();if(handler)handler()}
+function excelEsc(v){return String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]))}
+function showExcelMessage(cfg){return new Promise(resolve=>showExcelModal({...cfg,onClose:()=>resolve(),actions:[{label:"Понятно",className:"excel-primary",onClick:()=>{hideExcelModal();excelModalCloseHandler=null;resolve()}}]}))}
+function askExcelImport(o){return new Promise(resolve=>{const ph=o.preview.slice(0,5).map(x=>`<div class="excel-preview-row"><strong>${excelEsc(x.address)}</strong>${excelEsc(x.value)}</div>`).join("");const sh=o.skipped.length?`<div class="excel-section"><div class="excel-section-title">⚠️ Пропущенные строки</div><div class="excel-warn">${o.skipped.slice(0,5).map(x=>`Строка ${excelEsc(x.row)} — ${excelEsc(x.reason)}`).join("<br>")}${o.skipped.length>5?`<br>…и ещё ${o.skipped.length-5}.`:""}</div></div>`:`<div class="excel-section"><div class="excel-warn" style="background:#edf9f0;border-color:#b8dfc0;color:#2e6b3b">✓ Все строки с адресами обработаны.</div></div>`;showExcelModal({title:"Проверка импорта",fileName:`📄 ${o.fileName}`,onClose:()=>resolve(false),body:`<div class="excel-stats"><div class="excel-stat"><b>${o.rowCount}</b><span>строк с данными</span></div><div class="excel-stat"><b>${o.addressCount}</b><span>ячеек</span></div><div class="excel-stat"><b>${o.locationCount}</b><span>записей</span></div></div><div class="excel-section"><div class="excel-section-title">Предпросмотр</div><div class="excel-preview">${ph}${o.addressCount>5?`<div style="padding:7px 4px;color:#66717d">…и ещё ${o.addressCount-5} ячеек</div>`:""}</div></div>${sh}<div style="margin-top:14px;font-size:13px;color:#52606d">Загрузить эти данные на карту?</div>`,actions:[{label:"Отмена",onClick:()=>{hideExcelModal();excelModalCloseHandler=null;resolve(false)}},{label:"Загрузить",className:"excel-primary",onClick:()=>{hideExcelModal();excelModalCloseHandler=null;resolve(true)}}]})})}
+
+async function importExcelFile(file){
+  if(!file)return;
+
+  if(typeof XLSX==="undefined"){
+    await showExcelMessage({title:"Модуль Excel не загружен",icon:"⚠️",iconClass:"excel-error-icon",body:`<div class="excel-error">Не удалось загрузить модуль Excel. Обнови страницу и попробуй ещё раз.</div>`});
+    return;
+  }
+
+  try{
+    const buffer=await file.arrayBuffer();
+    const workbook=XLSX.read(buffer,{type:"array",cellDates:false});
+    const sheet=workbook.Sheets[workbook.SheetNames[0]];
+    const rows=XLSX.utils.sheet_to_json(sheet,{header:1,defval:"",raw:false});
+
+    if(!rows.length){
+      await showExcelMessage({title:"Excel пустой",icon:"⚠️",iconClass:"excel-error-icon",body:`<div class="excel-error">В выбранном файле нет данных для импорта.</div>`});
+      return;
+    }
+
+    // Определяем колонки по заголовкам. Текущий Excel из 1С:
+    // A = Описание, B = Артикул, C = Ячейка.
+    const headers=(rows[0]||[]).map(v=>String(v||"").trim().toLowerCase());
+
+    const columnMap={
+      description: headers.findIndex(h =>
+        /описан|наимен|назван/.test(h)
+      ),
+      article: headers.findIndex(h =>
+        /артикул|код/.test(h)
+      ),
+      location: headers.findIndex(h =>
+        /ячейк|адрес|место.*хран|хранен/.test(h)
+      )
+    };
+
+    // Excel из 1С может приходить вообще без заголовков.
+    // Например:
+    // A = Описание, B = Артикул, C = Ячейка, D = Количество
+    // Причём первая строка иногда полностью пустая.
+    // Поэтому определяем колонку адреса по реальным значениям, а не
+    // предполагаем, что при 4 колонках адрес находится в D.
+    const sampleRows=rows.slice(0,Math.min(rows.length,15));
+
+    if(columnMap.location<0){
+      for(let c=0;c<(rows[0]||[]).length;c++){
+        const sample=sampleRows
+          .map(r=>String(r?.[c]??"").toUpperCase())
+          .join(" ");
+        if(/\bS[1-5]\s*[,-]\s*[A-K]\s*[-,]?\s*\d{1,2}/i.test(sample) ||
+           /\bS[1-5]\b/i.test(sample)){
+          columnMap.location=c;
+          break;
+        }
+      }
+    }
+
+    if(columnMap.description<0 || columnMap.article<0){
+      // Для беззаголовочного файла сначала используем типичный
+      // формат 3/4 колонок: Описание | Артикул | Ячейка | Количество.
+      const count=Math.max(...rows.map(r=>(r||[]).length),0);
+      if(count>=3){
+        if(columnMap.description<0) columnMap.description=0;
+        if(columnMap.location<0) columnMap.location=2;
+        if(columnMap.article<0){
+          columnMap.article = columnMap.location>0 ? columnMap.location-1 : 1;
+        }
+      }
+    }
+
+    // Если заголовок всё-таки распознан, его схема имеет приоритет.
+    // Если колонка артикула не определилась, берём колонку перед адресом.
+    if(columnMap.article<0 && columnMap.location>0)
+      columnMap.article=columnMap.location-1;
+    if(columnMap.description<0 && columnMap.article>0)
+      columnMap.description=columnMap.article-1;
+
+    const imported={};
+    const skipped=[];
+    let rowCount=0;
+    let locationCount=0;
+
+    // Не привязываемся к первой строке: она может быть пустой или
+    // содержать заголовок. findExcelColumns() пропустит пустые строки.
+    for(let i=0;i<rows.length;i++){
+      const row=rows[i]||[];
+      const {description,article,location}=findExcelColumns(row,columnMap);
+
+      if(!description && !article && !location)continue;
+      rowCount++;
+
+      if(!article){
+        skipped.push({row:i+1,reason:"не найден артикул"});
+        continue;
+      }
+
+      if(!location){
+        skipped.push({row:i+1,reason:"нет адреса хранения"});
+        continue;
+      }
+
+      const locations=parseExcelLocations(location);
+
+      if(!locations.length){
+        // Например строка "S4" означает только улицу,
+        // но не конкретную ячейку. Её нельзя безопасно
+        // положить в карту автоматически.
+        skipped.push({
+          row:i+1,
+          reason:`нет конкретной ячейки: ${location}`
+        });
+        continue;
+      }
+
+      const content=description
+        ? `${article} — ${description}`
+        : article;
+
+      for(const addr of locations){
+        if(!imported[addr])imported[addr]=[];
+
+        if(!imported[addr].includes(content)){
+          imported[addr].push(content);
+          locationCount++;
+        }
+      }
+    }
+
+    const addresses=Object.keys(imported);
+
+    if(!addresses.length){
+      await showExcelMessage({title:"Ячейки не найдены",icon:"⚠️",iconClass:"excel-error-icon",body:`<div class="excel-error">Excel прочитан, но конкретных ячеек не найдено.<br><br>Пример ожидаемого адреса: <strong>S5, A3</strong> или <strong>S4, F6,F7,F8</strong>.</div>`});
+      return;
+    }
+
+    const preview=addresses.slice(0,10).map(addr=>({address:addr,value:imported[addr].join(" · ")}));
+
+    const ok=await askExcelImport({fileName:file.name,rowCount,addressCount:addresses.length,locationCount,preview,skipped});
+    if(!ok)return;
+
+    // Формируем только те ячейки, которые пришли из Excel.
+    // Используем частичное обновление Firebase, чтобы импорт:
+    // 1) не перезаписывал весь склад;
+    // 2) не удалял существующие ячейки;
+    // 3) не зависел от размера всего объекта data.
+    const patch={};
+    const validAddresses=[];
+
+    for(const addr of addresses){
+      const match=addr.match(/^S([1-5])-([A-K])-(\d+)$/);
+      if(!match)continue;
+
+      const [,s,l,n]=match;
+      const value=imported[addr].join("\n");
+
+      if(!data[`S${s}`] || !data[`S${s}`][l]){
+        continue;
+      }
+
+      if(!data[`S${s}`][l][n] && value){
+        // просто для читаемости; значение всё равно будет записано ниже
+      }
+
+      patch[`S${s}/${l}/${n}`]=value;
+      validAddresses.push(addr);
+    }
+
+    if(!validAddresses.length){
+      await showExcelMessage({title:"Импорт не выполнен",icon:"⚠️",iconClass:"excel-error-icon",body:`<div class="excel-error">Excel был распознан, но ни одного адреса карты не удалось подготовить к записи.</div>`});
+      return;
+    }
+
+    try{
+      // Excel + история записываются одним атомарным обновлением Firebase.
+      const historyKey = rootRef.child("history").push().key;
+      if(!historyKey) throw new Error("Не удалось создать ключ истории");
+
+      const historyEvent = {
+        type:"import",
+        detail:`Импорт Excel: ${file.name}`,
+        fileName:file.name,
+        cellsCount:validAddresses.length,
+        itemsCount:locationCount,
+        addresses:validAddresses.slice(0,200),
+        email:currentUserEmail(),
+        timestamp:firebase.database.ServerValue.TIMESTAMP
+      };
+
+      // Готовим itemMeta отдельно и добавляем его в тот же atomic update.
+      // Так Excel, история и метаданные либо сохраняются вместе, либо Firebase
+      // отклоняет весь пакет — без частично применённого импорта.
+      const nextMeta={...itemMeta};
+      const ts=nowTs();
+
+      for(const addr of validAddresses){
+        const importedValue=imported[addr].join("\n");
+        for(const detail of linesOf(importedValue)){
+          const key=itemKey(addr,detail);
+          if(!nextMeta[key]) nextMeta[key]={addedAt:ts,updatedAt:null};
+        }
+      }
+
+      const updates = {};
+      for(const [path,value] of Object.entries(patch)){
+        updates[`cells/${path}`]=value;
+      }
+      updates["itemMeta"]=nextMeta;
+      updates[`history/${historyKey}`]=historyEvent;
+
+      await rootRef.update(updates);
+      console.log("Импорт Excel, itemMeta и история сохранены:", historyKey);
+
+      // Только после успешного Firebase update меняем локальное состояние.
+      itemMeta=nextMeta;
+      for(const addr of validAddresses){
+        const match=addr.match(/^S([1-5])-([A-K])-(\d+)$/);
+        const [,s,l,n]=match;
+        data[`S${s}`][l][n]=imported[addr].join("\n");
+      }
+
+      setLocal();
+      render();
+      doSearch();
+
+      setSync(`☁️ Excel загружен: ${validAddresses.length} ячеек · история записана`,"ok");
+
+      // Если окно истории уже открыто — сразу обновляем его.
+      if(document.getElementById("historyModal")?.style.display==="flex"){
+        await openHistory();
+      }
+
+      await showExcelMessage({title:"Импорт завершён",icon:"✓",iconClass:"excel-success-icon",fileName:`📄 ${file.name}`,body:`<div class="excel-stats"><div class="excel-stat"><b>${validAddresses.length}</b><span>загружено ячеек</span></div><div class="excel-stat"><b>${locationCount}</b><span>записей</span></div><div class="excel-stat"><b>${skipped.length}</b><span>пропущено строк</span></div></div><div class="excel-warn" style="background:${skipped.length?"#fff8e7":"#edf9f0"};border-color:${skipped.length?"#f2d38a":"#b8dfc0"};color:${skipped.length?"#805b00":"#2e6b3b"}">${skipped.length?`⚠️ Импорт выполнен, но ${skipped.length} строк не были загружены.`:"✓ Все строки с адресами обработаны."}</div>`});
+
+    }catch(e){
+      console.error("Excel import Firebase error:",e);
+
+      const errorCode=String(e?.code||"").trim();
+      const errorMessage=String(e?.message||e||"Неизвестная ошибка").trim();
+      const errorLabel=errorCode || "UNKNOWN_ERROR";
+      const permissionHint=errorCode==="PERMISSION_DENIED"
+        ? `<br><br><strong>Firebase отклонил запись.</strong> Проверь, что выполнен вход владельцем и правила Realtime Database разрешают запись для этого аккаунта.`
+        : errorCode==="UNAUTHENTICATED"
+          ? `<br><br><strong>Пользователь не авторизован.</strong> Войди через Google и повтори импорт.`
+          : "";
+
+      console.error("Excel import failed:",{
+        code:errorCode,
+        message:errorMessage,
+        user:auth.currentUser?.email||null
+      });
+
+      setSync(
+        `⚠️ Ошибка Excel: ${errorLabel}`,
+        "err"
+      );
+
+      await showExcelMessage({
+        title:"Не удалось сохранить Excel",
+        icon:"⚠️",
+        iconClass:"excel-error-icon",
+        body:`<div class="excel-error"><strong>Импорт не сохранён.</strong><br><br>Код ошибки: <strong>${excelEsc(errorLabel)}</strong><br>Причина: <strong>${excelEsc(errorMessage)}</strong>${permissionHint}</div>`
+      });
+
+      return;
+    }
+
+
+    if(skipped.length){
+      console.warn("Пропущенные строки Excel:",skipped);
+    }
+
+  }catch(err){
+    console.error(err);
+    await showExcelMessage({title:"Ошибка чтения Excel",icon:"⚠️",iconClass:"excel-error-icon",body:`<div class="excel-error">Не удалось прочитать файл Excel.<br><br><small>${excelEsc(err?.message||err)}</small></div>`});
+  }
+}
+
+
+/* Global popup controls: ESC on PC + Android/browser Back on phones. */
+(function setupGlobalPopupClose(){
+  const popupIds=["excelModal","historyModal","modal","moveModal","specialModal"];
+  const isVisible=id=>{
+    const el=document.getElementById(id);
+    if(!el)return false;
+    const cs=getComputedStyle(el);
+    return cs.display!=="none" && cs.visibility!=="hidden" && cs.opacity!=="0";
+  };
+  const closeTopPopup=()=>{
+    if(isVisible("excelModal")){ closeExcelModal(); return true; }
+    if(isVisible("specialModal")){ closeSpecial(); return true; }
+    if(isVisible("moveModal")){ closeMoveModal(); return true; }
+    if(isVisible("modal")){ closeModal(); return true; }
+    if(isVisible("historyModal")){ closeHistory(); return true; }
+    return false;
+  };
+
+  // Keep one history guard entry so the phone/browser Back button closes a popup first.
+  let guardActive=true;
+  try{ history.pushState({warehousePopupGuard:true},"",location.href); }
+  catch(e){ guardActive=false; }
+
+  document.addEventListener("keydown",e=>{
+    if(e.key!=="Escape")return;
+    if(closeTopPopup()){
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  },true);
+
+  window.addEventListener("popstate",()=>{
+    if(closeTopPopup() && guardActive){
+      try{ history.pushState({warehousePopupGuard:true},"",location.href); }catch(e){}
+    }
+  });
+})();
+
+document.getElementById("excelFile").addEventListener("change",async e=>{
+  const file=e.target.files?.[0];
+  e.target.value="";
+  if(!file)return;
+
+  await importExcelFile(file);
+});
+
+
+
+
+// Координаты проходов на обрезанной схеме 1277×694.
+// Индикатор ВСЕГДА стоит в самом проходе, там где на плане обозначены S1...S5.
+// По вертикали он совпадает с нужной частью стойки/ячейки.
+// Слева/справа от индикатора — маленький коннектор к соответствующей стороне.
+const planMap = {
+  aisleX: {1:175, 2:412, 3:639, 4:867, 5:1103},
+
+  longY: {
+    10:108,
+    9:142,
+    8:176,
+    7:210,
+    6:245,
+    5:280,
+    4:315
+  },
+
+  shortY: {
+    3:520,
+    2:576,
+    1:640
+  }
+};
+
+function planPercent(x,y){
+  return {
+    left:(x/1277)*100,
+    top:(y/694)*100
+  };
+}
+
+function openPlanCell(s,l,n){
+  const realCell=document.getElementById(`cell-S${s}-${l}-${n}`);
+  if(realCell){
+    realCell.scrollIntoView({behavior:"smooth",block:"center",inline:"center"});
+    realCell.classList.remove("focused");
+    void realCell.offsetWidth;
+    realCell.classList.add("focused");
+  }
+  openModal(s,l,n);
+}
+
+function renderMiniMap(found=[]){
+  const root=document.getElementById("planMarkers");
+  const legend=document.getElementById("miniMapLegend");
+  if(!root)return;
+
+  root.innerHTML="";
+
+  // Подсвечиваем только найденные места в центре прохода.
+  // Никаких горизонтальных/вертикальных палочек — только мягкое свечение.
+  const groups=new Map();
+
+  for(const x of (found||[])){
+    if(x.special || !x.s || !x.l || !x.n)continue;
+
+    const s=Number(String(x.s).replace("S",""));
+    const n=Number(x.n);
+    if(!planMap.aisleX[s] || !Number.isFinite(n))continue;
+
+    const key=`${s}-${x.l}-${n}`;
+    if(!groups.has(key)){
+      groups.set(key,{s,l:x.l,n});
+    }
+  }
+
+  for(const g of groups.values()){
+    const x=planMap.aisleX[g.s];
+
+    // Координата по вертикали: 4–10 сверху, 1–3 снизу.
+    let top;
+    if(g.n>=4){
+      // 4 = низ верхней секции, 10 = её верх.
+      top = 335 - ((g.n-4)/6)*247;
+    }else{
+      // 1–3 = нижняя секция.
+      top = 670 - ((g.n-1)/2)*165;
+    }
+
+    const p=planPercent(x,top);
+
+    const marker=document.createElement("div");
+    marker.className="plan-marker";
+    marker.id=`plan-marker-S${g.s}-${g.l}-${g.n}`;
+    marker.style.left=p.left+"%";
+    marker.style.top=p.top+"%";
+    // Каждый индикатор имеет собственную небольшую область нажатия.
+    marker.style.zIndex=10 + Number(g.n);
+
+    const highlight=document.createElement("div");
+    highlight.className="plan-aisle-highlight";
+
+    const label=document.createElement("div");
+    label.className="plan-aisle-label";
+    label.textContent=`${g.l}${g.n}`;
+
+    highlight.title=`S${g.s}-${g.l}-${g.n}`;
+    highlight.style.pointerEvents="auto";
+    highlight.setAttribute("role","button");
+    highlight.setAttribute("aria-label",`Ячейка S${g.s}-${g.l}-${g.n}`);
+    highlight.onclick=(event)=>{
+      event.stopPropagation();
+      openPlanCell(`S${g.s}`,g.l,String(g.n));
+    };
+
+    highlight.appendChild(label);
+    marker.appendChild(highlight);
+    root.appendChild(marker);
+  }
+
+  if(legend){
+    const total=groups.size;
+    legend.textContent=total
+      ? `✨ Подсвечено мест: ${total}`
+      : "При поиске найденные ячейки будут мягко подсвечиваться на плане";
+  }
+}
+
+let activeMapTarget = null;
+
+function clearMapTarget(){
+  if(activeMapTarget){
+    const old=document.getElementById(activeMapTarget);
+    if(old) old.classList.remove("map-target-active");
+  }
+  activeMapTarget=null;
+}
+
+function activateMapTarget(markerId){
+  clearMapTarget();
+  const marker=document.getElementById(markerId);
+  if(!marker) return;
+
+  const label=marker.querySelector(".plan-aisle-highlight");
+  if(!label) return;
+
+  label.classList.add("map-target-active");
+  activeMapTarget=markerId;
+
+  // Любое ручное движение экрана убирает красное мигание.
+  const stop=()=>{
+    clearMapTarget();
+    window.removeEventListener("scroll",stop);
+    window.removeEventListener("touchmove",stop);
+    window.removeEventListener("wheel",stop);
+  };
+  window.addEventListener("scroll",stop,{passive:true});
+  window.addEventListener("touchmove",stop,{passive:true});
+  window.addEventListener("wheel",stop,{passive:true});
+}
+
+function showResultOnMap(s,l,n){
+  const wrap=document.getElementById("miniMapWrap");
+  if(wrap) wrap.scrollIntoView({behavior:"smooth",block:"start"});
+
+  // После окончания прокрутки ищем именно маленький индикатор этой ячейки.
+  setTimeout(()=>{
+    const markerId=`plan-marker-${s}-${l}-${n}`;
+    activateMapTarget(markerId);
+  },650);
+}
+
+function doSearch(){
+  const raw=document.getElementById("search").value.trim();
+  const out=document.getElementById("results");
+
+  if(!raw){
+    out.innerHTML="";
+    renderMiniMap([]);
+    return;
+  }
+
+  const queryTokens=searchTokens(raw);
+  const found=[];
+
+  for(let s=1;s<=5;s++){
+    const ls=s===1?leftLetters:letters;
+
+    for(const l of ls){
+      for(let n=1;n<=10;n++){
+        const v=data["S"+s][l][String(n)]||"";
+        const a=address("S"+s,l,n);
+
+        // Проверяем каждую запись внутри ячейки отдельно.
+        // Например, запрос mz0903 должен показать только APMZ0903,
+        // а не соседний APMZ0203C из той же ячейки.
+        const lines=String(v).split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+        const matchedLines=lines
+          .map(line=>({line,score:searchScore(queryTokens,line)}))
+          .filter(x=>x.score>0);
+
+        // Если ищем именно адрес, показываем всю ячейку.
+        const addressMatch=queryTokenMatchesText(raw,a);
+        const score=matchedLines.length
+          ? Math.max(...matchedLines.map(x=>x.score))
+          : (addressMatch ? 200 : 0);
+
+        if(score>0){
+          found.push({
+            a,v,
+            matchedLines:matchedLines.map(x=>x.line),
+            s:"S"+s,l,n:String(n),score
+          });
+        }
+      }
+    }
+  }
+
+  for(const type of ["resale","defect"]){
+    const v=specialData[type]||"";
+    const a=type==="resale"?"Перекупной товар":"Брак";
+    const score=searchScore(queryTokens,`${a} ${v}`);
+
+    if(score>0){
+      found.push({a,v,special:type,score});
+    }
+  }
+
+  found.sort((a,b)=>b.score-a.score);
+
+  if(!found.length){
+    out.innerHTML='<div class="result">Ничего не найдено.</div>';
+    renderMiniMap([]);
+    return;
+  }
+
+  out.innerHTML=
+    `<div class="search-results-head">Найдено: ${found.length}</div>`+
+    found.map(x=>x.special
+      ? `<div class="search-result-row" onclick="openSpecial('${x.special}')">
+           <div class="search-result-info">
+             <strong>${esc(x.a)}</strong>
+             <span class="article">${esc(x.v||"пусто")}</span>
+           </div>
+         </div>`
+      : `<div class="search-result-row" onclick="openModal('${x.s}','${x.l}','${x.n}')">
+           <div class="search-result-info">
+             <strong>${esc(x.a)}</strong>
+             <span class="article">${esc(
+               x.matchedLines?.length ? x.matchedLines.join(" · ") : (x.v||"пусто")
+             )}</span>
+           </div>
+           <button class="search-result-map-btn"
+             onclick="event.stopPropagation();showResultOnMap('${x.s}','${x.l}','${x.n}')">
+             🗺️ На карте
+           </button>
+         </div>`
+    ).join("");
+
+  renderMiniMap(found);
+}
+
+document.getElementById("search").addEventListener("input",()=>{
+  // Поиск работает только по уже загруженному в память data.
+  // Firebase write/read здесь вообще не вызывается.
+  render();
+  doSearch();
+});
+
+rootRef.on("value",async snap=>{
+ const remote=snap.val();
+ if(!remote){
+  if(hasLocalData()&&!remoteLoaded){
+   const localD=JSON.parse(localStorage.getItem("warehouseMapData")||"null");
+   const localS=JSON.parse(localStorage.getItem("warehouseSpecialData")||"null");
+   const localM=JSON.parse(localStorage.getItem("warehouseItemMeta")||"null");
+   data=normalizeData(localD);specialData=localS||{resale:"",defect:""};itemMeta=normalizeMeta(localM);
+   setLocal();render();doSearch();
+   if(canEdit()){
+    try{
+      await rootRef.set({cells:data,special:specialData,itemMeta:itemMeta});
+      setSync("☁️ Данные ПК перенесены в Firebase","ok");
+    }catch(e){
+      setSync("⚠️ Нет записи в Firebase","err");
+    }
+  }else{
+    setSync("👁️ Режим просмотра","ok");
+  }
+  }else{data=createEmptyData();specialData={resale:"",defect:""};itemMeta={};setLocal();render();doSearch();setSync("☁️ Firebase подключён","ok")}
+  remoteLoaded=true;return;
+ }
+ data=normalizeData(remote.cells);specialData=remote.special||{resale:"",defect:""};itemMeta=normalizeMeta(remote.itemMeta);setLocal();remoteLoaded=true;render();doSearch();setSync("☁️ Синхронизировано","ok");
+},err=>{setSync("⚠️ Ошибка Firebase","err");console.error(err)});
+
+render();renderSpecial();renderMiniMap([]);initHistoryUi();setAccessUi();
+</script>
+</body>
+</html>
