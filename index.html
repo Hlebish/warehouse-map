@@ -8,7 +8,7 @@
 :root{--bg:#eef1f4;--card:#fff;--ink:#18212b;--muted:#66717d;--accent:#1f6feb;--empty:#e8edf2;--filled:#7ccf8a;--border:#c8d0d8;--search:#ef4444}
 *{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:var(--bg);color:var(--ink)}
 header{background:#17212b;color:#fff;padding:16px 20px;position:sticky;top:0;z-index:10;box-shadow:0 2px 10px #0002}
-h1{margin:0 0 8px;font-size:24px}.sub{font-size:13px;color:#cbd5df}.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+h1{margin:0 0 8px;font-size:24px}.sub{font-size:13px;color:#cbd5df}.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;position:sticky;top:0;z-index:20;background:#17212b;padding:8px 0}
 input,button{font:inherit;border:1px solid var(--border);border-radius:8px;padding:9px 11px;background:#fff}
 button{cursor:pointer;font-weight:600}button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
 main{padding:12px;max-width:1500px;width:100%;margin:auto;overflow:hidden}
@@ -77,6 +77,45 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
   color:var(--muted);
   margin-bottom:20px;
 }
+ #searchSuggestions{
+  position:absolute;
+  left:0;
+  right:0;
+  top:100%;
+  background:#fff;
+  border:1px solid #d0d5da;
+  border-radius:8px;
+  box-shadow:0 6px 18px rgba(0,0,0,.12);
+  z-index:2000;
+  max-height:260px;
+  overflow-y:auto;
+  display:none;
+}
+
+.search-suggestion{
+  padding:9px 12px;
+  cursor:pointer;
+  border-bottom:1px solid #eee;
+}
+
+.search-suggestion:last-child{
+  border-bottom:0;
+}
+
+.search-suggestion:hover{
+  background:#f1f4f6;
+}
+
+.search-suggestion-address{
+  font-size:12px;
+  color:#777;
+}
+
+.search-suggestion-art{
+  font-weight:700;
+  color:#222;
+  margin-top:2px;
+}
 </style>
 </head>
 <body>
@@ -136,6 +175,7 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
 <div class="sub">Адрес: улица (S1–S5) → полка (A–E слева / F–K справа)</div>
 <div class="toolbar">
 <input id="search" type="search" placeholder="🔎 Поиск детали, артикула или адреса…" style="flex:1;min-width:220px">
+ <div id="searchSuggestions"></div>
 <button class="primary" onclick="exportData()">Экспорт</button>
 <button onclick="importData()">Импорт</button>
 </div>
@@ -341,6 +381,99 @@ function doSearch(){
  : `<div class="result">Ничего не найдено.</div>`;
 }
 document.getElementById("search").addEventListener("input",()=>{render();doSearch()});
+ const searchInput=document.getElementById("search");
+const searchSuggestions=document.getElementById("searchSuggestions");
+
+searchInput.addEventListener("input",()=>{
+  const q=searchInput.value.trim().toLowerCase();
+
+  searchSuggestions.innerHTML="";
+
+  if(!q){
+    searchSuggestions.style.display="none";
+    return;
+  }
+
+  const suggestions=[];
+
+  for(let s=1;s<=5;s++){
+    const ls=s===1?leftLetters:letters;
+
+    for(const l of ls){
+      for(let n=1;n<=10;n++){
+
+        const value=data["S"+s][l][String(n)]||"";
+
+        if(!value.trim()) continue;
+
+        const articles=value
+          .split(/[\n,;]+/)
+          .map(x=>x.trim())
+          .filter(Boolean);
+
+        for(const article of articles){
+
+          if(article.toLowerCase().startsWith(q)){
+
+            suggestions.push({
+              article,
+              s:"S"+s,
+              l,
+              n:String(n),
+              address:address("S"+s,l,n)
+            });
+
+          }
+
+        }
+      }
+    }
+  }
+
+  const unique=[];
+  const seen=new Set();
+
+  for(const x of suggestions){
+    const key=x.s+"|"+x.l+"|"+x.n+"|"+x.article.toLowerCase();
+
+    if(!seen.has(key)){
+      seen.add(key);
+      unique.push(x);
+    }
+  }
+
+  if(!unique.length){
+    searchSuggestions.style.display="none";
+    return;
+  }
+
+  searchSuggestions.innerHTML=unique
+    .slice(0,15)
+    .map(x=>`
+      <div class="search-suggestion"
+           onclick="openModal('${x.s}','${x.l}','${x.n}');searchSuggestions.style.display='none'">
+
+        <div class="search-suggestion-address">
+          ${esc(x.address)}
+        </div>
+
+        <div class="search-suggestion-art">
+          ${esc(x.article)}
+        </div>
+
+      </div>
+    `)
+    .join("");
+
+  searchSuggestions.style.display="block";
+});
+
+document.addEventListener("click",e=>{
+  if(!e.target.closest("#search") &&
+     !e.target.closest("#searchSuggestions")){
+    searchSuggestions.style.display="none";
+  }
+});
 document.getElementById("modal").addEventListener("click",e=>{if(e.target.id==="modal")closeModal()});
 document.getElementById("specialModal").addEventListener("click",e=>{if(e.target.id==="specialModal")closeSpecial()});
 document.addEventListener("keydown",e=>{if(e.key==="Escape"){closeModal();closeSpecial()}});
