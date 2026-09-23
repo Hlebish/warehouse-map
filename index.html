@@ -135,7 +135,7 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
 <h1>📦 Интерактивная карта склада</h1>
 <div class="sub">Адрес: улица (S1–S5) → полка (A–E слева / F–K справа)</div>
 <div class="toolbar">
-<input id="search" type="search" placeholder="🔎 Поиск детали, артикула или адреса…" style="flex:1;min-width:220px">
+<input id="search" type="search" placeholder="🔎 Поиск детали, артикула или адреса…" style="width:100%;min-width:0">
 <button class="primary" onclick="exportData()">Экспорт</button>
 <button onclick="importData()">Импорт</button>
 </div>
@@ -319,15 +319,150 @@ async function clearAll(){
  try{await rootRef.set({cells:data,special:specialData});setSync("☁️ Синхронизировано","ok");}
  catch(e){setSync("⚠️ Ошибка синхронизации","err");console.error(e)}
 }
+function normalizeSearchText(value){
+  return String(value||"")
+    .toLowerCase()
+    .replace(/ё/g,"е")
+    .replace(/й/g,"и")
+    .replace(/[^a-zа-я0-9]+/g," ")
+    .trim();
+}
+
+function translitToLatin(value){
+  const map={
+    "а":"a","б":"b","в":"v","г":"g","д":"d","е":"e","ж":"zh","з":"z","и":"i","й":"y",
+    "к":"k","л":"l","м":"m","н":"n","о":"o","п":"p","р":"r","с":"s","т":"t","у":"u",
+    "ф":"f","х":"h","ц":"c","ч":"ch","ш":"sh","щ":"sch","ъ":"","ы":"y","ь":"","э":"e",
+    "ю":"yu","я":"ya"
+  };
+  return normalizeSearchText(value).split("").map(ch=>map[ch]??ch).join("");
+}
+
+function fixKeyboardLayout(value){
+  const ru="йцукенгшщзхъфывапролджэячсмитьбю";
+  const en="qwertyuiop[]asdfghjkl;'zxcvbnm,.";
+  const text=String(value||"").toLowerCase();
+  return text.split("").map(ch=>{
+    const i=ru.indexOf(ch);
+    return i>=0 ? en[i] : ch;
+  }).join("");
+}
+
+function searchTokens(value){
+  const raw=normalizeSearchText(value);
+  const tokens=raw.split(/\s+/).filter(Boolean);
+  return [...new Set([
+    ...tokens,
+    ...tokens.map(translitToLatin),
+    ...tokens.map(fixKeyboardLayout).map(normalizeSearchText)
+  ])];
+}
+
+const searchAliases={
+  "капот":["капот","hood","bonnet"],
+  "крыло":["крыло","wing"],
+  "бампер":["бампер","bumper"],
+  "дверь":["дверь","door"],
+  "двери":["дверь","двери","door"],
+  "фара":["фара","headlight"],
+  "фонарь":["фонарь","фонар","tail light","taillight"],
+  "решетка":["решетка","решётка","grille"],
+  "мазда":["мазда","mazda","mz"],
+  "хонда":["хонда","honda","hd"],
+  "тойота":["тойота","toyota","ty"],
+  "ниссан":["ниссан","nissan","ns"],
+  "форд":["форд","ford","fd"],
+  "ауди":["ауди","audi","au"],
+  "бмв":["бмв","bmw"],
+  "фольксваген":["фольксваген","volkswagen","vw"],
+  "шевроле":["шевроле","chevrolet","chevy"],
+  "мерседес":["мерседес","mercedes","mb"]
+};
+
+function levenshtein(a,b){
+  if(a===b)return 0;
+  if(!a)return b.length;
+  if(!b)return a.length;
+  if(a.length>b.length)[a,b]=[b,a];
+
+  let prev=Array.from({length:a.length+1},(_,i)=>i);
+
+  for(let j=1;j<=b.length;j++){
+    const cur=[j];
+    for(let i=1;i<=a.length;i++){
+      cur[i]=Math.min(
+        cur[i-1]+1,
+        prev[i]+1,
+        prev[i-1]+(a[i-1]===b[j-1]?0:1)
+      );
+    }
+    prev=cur;
+  }
+  return prev[a.length];
+}
+
+function expandSearchToken(token){
+  const base=normalizeSearchText(token);
+  const result=new Set([base,translitToLatin(base),normalizeSearchText(fixKeyboardLayout(base))]);
+
+  for(const [key,aliases] of Object.entries(searchAliases)){
+    const all=[key,...aliases].map(normalizeSearchText);
+    if(all.includes(base)){
+      aliases.forEach(x=>result.add(normalizeSearchText(x)));
+    }
+  }
+
+  return [...result].filter(Boolean);
+}
+
+function searchScore(queryTokens,text){
+  const normalized=normalizeSearchText(text);
+  const textTokens=normalized.split(/\s+/).filter(Boolean);
+  const compact=normalized.replace(/\s+/g,"");
+  let score=0;
+
+  for(const rawToken of queryTokens){
+    const variants=expandSearchToken(rawToken);
+    let best=0;
+
+    for(const token of variants){
+      if(!token)continue;
+
+      if(compact.includes(token)){
+        best=Math.max(best,100);
+        continue;
+      }
+
+      for(const word of textTokens){
+        if(word.startsWith(token)){
+          best=Math.max(best,90);
+        }else if(token.length>=3 && word.length>=3){
+          const distance=levenshtein(token,word);
+          const maxDistance=token.length<=4?1:token.length<=7?2:3;
+          if(distance<=maxDistance){
+            best=Math.max(best,70-distance*10);
+          }
+        }
+      }
+    }
+
+    if(best===0)return 0;
+    score+=best;
+  }
+
+  return score;
+}
+
 function doSearch(){
-  const q=document.getElementById("search").value.trim().toLowerCase();
+  const raw=document.getElementById("search").value.trim();
   const out=document.getElementById("results");
 
-  if(!q){
+  if(!raw){
     out.innerHTML="";
     return;
   }
 
+  const queryTokens=searchTokens(raw);
   const found=[];
 
   for(let s=1;s<=5;s++){
@@ -337,9 +472,12 @@ function doSearch(){
       for(let n=1;n<=10;n++){
         const v=data["S"+s][l][String(n)]||"";
         const a=address("S"+s,l,n);
+        const searchable=`${a} ${v}`;
 
-        if(a.toLowerCase().includes(q)||v.toLowerCase().includes(q)){
-          found.push({a,v,s:"S"+s,l,n:String(n)});
+        const score=searchScore(queryTokens,searchable);
+
+        if(score>0){
+          found.push({a,v,s:"S"+s,l,n:String(n),score});
         }
       }
     }
@@ -348,11 +486,14 @@ function doSearch(){
   for(const type of ["resale","defect"]){
     const v=specialData[type]||"";
     const a=type==="resale"?"Перекупной товар":"Брак";
+    const score=searchScore(queryTokens,`${a} ${v}`);
 
-    if(a.toLowerCase().includes(q)||v.toLowerCase().includes(q)){
-      found.push({a,v,special:type});
+    if(score>0){
+      found.push({a,v,special:type,score});
     }
   }
+
+  found.sort((a,b)=>b.score-a.score);
 
   if(!found.length){
     out.innerHTML='<div class="result">Ничего не найдено.</div>';
