@@ -320,6 +320,24 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
  .mini-map{grid-template-columns:1fr}
 }
 </style>
+<style>
+/* Активная ячейка после кнопки «На карте»: красная и мигает,
+   пока пользователь не начнёт двигать страницу. */
+.plan-aisle-highlight.map-target-active .plan-aisle-label{
+  color:#fff !important;
+  background:radial-gradient(circle,
+    rgba(255,45,45,.98) 0%,
+    rgba(255,45,45,.68) 35%,
+    rgba(255,45,45,.22) 62%,
+    rgba(255,45,45,0) 82%) !important;
+  filter:drop-shadow(0 0 5px rgba(255,35,35,.95));
+  animation:mapTargetBlink .55s ease-in-out infinite alternate;
+}
+@keyframes mapTargetBlink{
+  from{transform:scale(1);opacity:.65}
+  to{transform:scale(1.25);opacity:1}
+}
+</style>
 </head>
 <body>
 
@@ -2023,17 +2041,48 @@ function renderMiniMap(found=[]){
   }
 }
 
+let activeMapTarget = null;
+
+function clearMapTarget(){
+  if(activeMapTarget){
+    const old=document.getElementById(activeMapTarget);
+    if(old) old.classList.remove("map-target-active");
+  }
+  activeMapTarget=null;
+}
+
+function activateMapTarget(markerId){
+  clearMapTarget();
+  const marker=document.getElementById(markerId);
+  if(!marker) return;
+
+  const label=marker.querySelector(".plan-aisle-highlight");
+  if(!label) return;
+
+  label.classList.add("map-target-active");
+  activeMapTarget=markerId;
+
+  // Любое ручное движение экрана убирает красное мигание.
+  const stop=()=>{
+    clearMapTarget();
+    window.removeEventListener("scroll",stop);
+    window.removeEventListener("touchmove",stop);
+    window.removeEventListener("wheel",stop);
+  };
+  window.addEventListener("scroll",stop,{passive:true});
+  window.addEventListener("touchmove",stop,{passive:true});
+  window.addEventListener("wheel",stop,{passive:true});
+}
+
 function showResultOnMap(s,l,n){
   const wrap=document.getElementById("miniMapWrap");
-  if(wrap) wrap.scrollIntoView({behavior:"smooth",block:"center"});
+  if(wrap) wrap.scrollIntoView({behavior:"smooth",block:"start"});
+
+  // После окончания прокрутки ищем именно маленький индикатор этой ячейки.
   setTimeout(()=>{
-    const marker=document.getElementById(`plan-marker-${s}-${l}-${n}`);
-    if(marker){
-      marker.classList.remove("plan-marker-focus");
-      void marker.offsetWidth;
-      marker.classList.add("plan-marker-focus");
-    }
-  },250);
+    const markerId=`plan-marker-${s}-${l}-${n}`;
+    activateMapTarget(markerId);
+  },650);
 }
 
 function doSearch(){
