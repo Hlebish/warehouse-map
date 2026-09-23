@@ -640,6 +640,7 @@ function historyTypeLabel(type){
     remove:"➖ Удаление",
     edit:"✏️ Изменение",
     import:"📥 Импорт Excel",
+    importExcel:"📥 Импорт Excel",
     clear:"🗑️ Очистка склада"
   })[type]||"Событие";
 }
@@ -652,7 +653,7 @@ function renderHistory(){
   const type=String(document.getElementById("historyType")?.value||"all");
 
   let items=(window.__warehouseHistory||[]).filter(x=>{
-    if(type!=="all" && x.type!==type)return false;
+    if(type!=="all" && !(type==="import" && (x.type==="import" || x.type==="importExcel")) && x.type!==type)return false;
     if(!q)return true;
     const hay=[
       x.detail,x.article,x.address,x.from,x.to,x.email,x.fileName
@@ -1830,25 +1831,29 @@ async function importExcelFile(file){
     }
 
     try{
-      // Сначала записываем в Firebase.
-      // Если Firebase отклонит запись, данные на карте не меняем.
-      await rootRef.child("cells").update(patch);
+      // Excel + история записываются одним атомарным обновлением Firebase.
+      const historyKey = rootRef.child("history").push().key;
+      if(!historyKey) throw new Error("Не удалось создать ключ истории");
 
-      // После успешной записи сразу фиксируем сам факт импорта в истории.
-      // Делаем это ДО записи itemMeta, чтобы импорт не потерялся из-за
-      // отдельной операции с метаданными.
-      const importHistorySaved = await writeHistory({
+      const historyEvent = {
         type:"import",
         detail:`Импорт Excel: ${file.name}`,
         fileName:file.name,
         cellsCount:validAddresses.length,
         itemsCount:locationCount,
-        addresses:validAddresses.slice(0,200)
-      });
+        addresses:validAddresses.slice(0,200),
+        email:currentUserEmail(),
+        timestamp:firebase.database.ServerValue.TIMESTAMP
+      };
 
-      if(!importHistorySaved){
-        console.warn("Импорт записан в склад, но запись истории не подтверждена.");
+      const updates = {};
+      for(const [path,value] of Object.entries(patch)){
+        updates[`cells/${path}`]=value;
       }
+      updates[`history/${historyKey}`]=historyEvent;
+
+      await rootRef.update(updates);
+      console.log("Импорт Excel и история сохранены:", historyKey);
 
       // После успешной записи обновляем локальное состояние.
       for(const addr of validAddresses){
