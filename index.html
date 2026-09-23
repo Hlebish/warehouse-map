@@ -1183,40 +1183,17 @@ function searchPartMatch(part,text){
 }
 
 function searchBrandMatch(brand,text){
-  // Для марки автомобиля используем строгое совпадение.
-  // Нечёткий поиск коротких кодов вроде MZ давал ложные результаты.
-  const normalized=normalizeSearchText(text);
-  const aliases=(searchAliases[brand]||[brand]).map(normalizeSearchText);
+  // Сначала ищем марку непосредственно во всей информации ячейки:
+  // описание, артикул, дополнительные строки и адрес.
+  if(expandSearchToken(brand).some(v=>v && fuzzyTokenMatch(v,text)))return true;
 
-  // Название марки должно реально присутствовать в содержимом ячейки.
-  for(const alias of aliases){
-    if(alias.length>=4 && normalized.includes(alias))return true;
-  }
-
-  // Короткий код марки разрешён только внутри складского артикула AP+код.
-  const brandCodes={
-    "мазда":"MZ","хонда":"HD","тойота":"TY","ниссан":"NS",
-    "форд":"FD","ауди":"AU","бмв":"BM","фольксваген":"VW",
-    "шевроле":"CH","мерседес":"MB","лексус":"LX","инфинити":"INF",
-    "акура":"AC","субару":"SU","митсубиси":"MI","сузуки":"SZ",
-    "исузу":"IZ","дайхатсу":"DH","киа":"KI","хендай":"HY",
-    "генезис":"GN","дэу":"DW","рено":"RE","пежо":"PG",
-    "ситроен":"CT","фиат":"FT","вольво":"VO","сааб":"SA",
-    "ягуар":"JG","ланд ровер":"LR","ровер":"RV","джип":"JP",
-    "додж":"DG","крайслер":"CH","кадиллак":"CA","линкольн":"LN",
-    "бьюик":"BK","понтиак":"PT","саат":"ST","шкода":"SK",
-    "опель":"OP","порше":"PR","бентли":"BE","масерати":"MA",
-    "ламборгини":"LM","феррари":"FR","тесла":"TS","мини":"MN",
-    "мг":"MG","лада":"LA","ваз":"VA","газ":"GA","уаз":"UA"
-  };
-
-  const code=brandCodes[brand];
-  if(code){
-    const raw=String(text||"").toUpperCase();
-    if(new RegExp("(?:^|[^A-ZА-Я0-9])AP"+code+"[A-ZА-Я0-9-]*", "i").test(raw))return true;
-  }
-
-  return false;
+  // Запасной вариант для складского артикула AP + код марки.
+  const brandAliases=(searchAliases[brand]||[brand]).map(normalizeSearchText);
+  const raw=String(text||"").toUpperCase();
+  return brandAliases.some(alias=>{
+    const compact=alias.replace(/\s+/g,"");
+    return compact.length<=4 && new RegExp("AP"+compact+"\\d+","i").test(raw);
+  });
 }
 
 function searchScore(queryTokens,text){
@@ -1274,8 +1251,10 @@ function doSearch(){
  const tokens=searchTokens(raw);
  const found=[];
 
- // Ищем по всему складу, независимо от выбранных фильтров.
- // Это позволяет сначала найти деталь, а потом уже отфильтровать карту.
+ // Ищем НЕ по всей ячейке целиком, а по каждой строке отдельно.
+ // Это важно: запрос «Mazda капот» должен найти строку,
+ // где одновременно есть Mazda и капот, а не ячейку,
+ // в которой Mazda находится на одной строке, а капот — на другой.
  for(let s=1;s<=5;s++){
   const ls=s===1?leftLetters:[...leftLetters,...rightLetters];
   for(const l of ls){
@@ -1284,11 +1263,29 @@ function doSearch(){
     if(!v)continue;
 
     const a=address("S"+s,l,n);
-    const searchable=`${a} ${v}`;
-    const score=searchScore(tokens,searchable);
+    const lines=v.split(/\n+/).map(x=>x.trim()).filter(Boolean);
+    const matchedLines=[];
+    let bestScore=0;
 
-    if(score>0){
-     found.push({a,v,s:"S"+s,l,n:String(n),score});
+    for(const line of lines){
+      // Адрес добавляем к строке, чтобы поиск по адресу тоже продолжал работать.
+      const score=searchScore(tokens,`${a} ${line}`);
+      if(score>0){
+        matchedLines.push(line);
+        bestScore=Math.max(bestScore,score);
+      }
+    }
+
+    if(matchedLines.length){
+      found.push({
+        a,
+        v,
+        matchedLines,
+        s:"S"+s,
+        l,
+        n:String(n),
+        score:bestScore
+      });
     }
    }
   }
@@ -1298,8 +1295,11 @@ function doSearch(){
   const v=String(specialData[type]||"").trim();
   if(!v)continue;
   const a=type==="resale"?"Перекупной товар":"Брак";
-  const score=searchScore(tokens,`${a} ${v}`);
-  if(score>0)found.push({a,v,special:type,score});
+  const lines=v.split(/\n+/).map(x=>x.trim()).filter(Boolean);
+  const matchedLines=lines.filter(line=>searchScore(tokens,`${a} ${line}`)>0);
+  if(matchedLines.length){
+    found.push({a,v,matchedLines,special:type,score:searchScore(tokens,`${a} ${matchedLines[0]}`)});
+  }
  }
 
  found.sort((a,b)=>b.score-a.score || a.a.localeCompare(b.a,"ru"));
@@ -1315,18 +1315,17 @@ function doSearch(){
   found.map(x=>x.special
    ? `<div class="result search-result special-result" onclick="openSpecial('${x.special}')">
        <div class="result-address">${esc(x.a)}</div>
-       <div class="result-content">${formatSearchPreview(x.v)}</div>
+       <div class="result-content">${formatSearchPreview(x.matchedLines.join("\\n"))}</div>
      </div>`
    : `<div class="result search-result" onclick="scrollToCell('${x.s}','${x.l}','${x.n}')">
        <div class="result-address">${esc(x.a)}</div>
-       <div class="result-content">${formatSearchPreview(x.v)}</div>
+       <div class="result-content">${formatSearchPreview(x.matchedLines.join("\\n"))}</div>
        <button class="copy-btn" title="Скопировать адрес" onclick="event.stopPropagation();copyText('${x.a}')">📋</button>
      </div>`
   ).join("");
 
  render();
 }
-
 // Поиск должен обновляться сразу при вводе, а не только после сохранения ячейки.
 document.getElementById("search").addEventListener("input",doSearch);
 
