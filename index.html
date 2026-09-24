@@ -1851,15 +1851,24 @@ function excelCellText(value){
 function findExcelColumns(row,columnMap){
   const cells=(row||[]).map(excelCellText);
 
-  // Основной формат Excel из 1С:
-  // 1-й столбец — описание детали/модель,
-  // 2-й — артикул,
-  // 3-й — адрес хранения.
-  // Если заголовки распознаны, используем их; иначе — именно эту схему.
-  const hasExplicitMap = columnMap && (columnMap.description>=0 || columnMap.article>=0 || columnMap.location>=0);
-  const descIndex = columnMap?.description>=0 ? columnMap.description : (cells.length>=3 ? 0 : -1);
-  const articleIndex = columnMap?.article>=0 ? columnMap.article : (cells.length>=3 ? 1 : 0);
-  const locationIndex = columnMap?.location>=0 ? columnMap.location : (cells.length>=3 ? 2 : 1);
+  // Фиксированный формат твоего Excel из 1С:
+  // A (0) = описание детали / модель автомобиля
+  // B (1) = артикул
+  // C (2) = адрес хранения
+  // Для обычных строк используем именно этот порядок,
+  // чтобы автоопределение не путало описание и артикул.
+  if(cells.length>=3){
+    return {
+      description: cells[0]||"",
+      article: cells[1]||"",
+      location: cells[2]||""
+    };
+  }
+
+  // Запасной вариант для старых/нестандартных файлов.
+  const descIndex = columnMap?.description>=0 ? columnMap.description : -1;
+  const articleIndex = columnMap?.article>=0 ? columnMap.article : (cells.length>=2 ? 0 : -1);
+  const locationIndex = columnMap?.location>=0 ? columnMap.location : (cells.length>=2 ? 1 : -1);
 
   return {
     description: descIndex>=0 ? (cells[descIndex]||"") : "",
