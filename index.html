@@ -2445,15 +2445,48 @@ function openPlanCell(s,l,n){
   openModal(s,l,n);
 }
 
+function planShelfOffset(letter, mapWidth){
+  const l=String(letter||"").toUpperCase();
+  // Разводим маркеры по сторонам прохода, чтобы несколько найденных
+  // ячеек одной улицы/номера не сливались в одну жёлтую кляксу.
+  // На узких экранах уменьшаем шаг автоматически.
+  const spread=Math.max(18, Math.min(40, Number(mapWidth||0)*0.038));
+  const offsets={
+    A:-5*spread,
+    B:-3*spread,
+    C:-1*spread,
+    D: 1*spread,
+    E: 3*spread,
+    F:-3*spread,
+    G:-1*spread,
+    H: 1*spread,
+    J: 3*spread,
+    K: 5*spread
+  };
+  return offsets[l] ?? 0;
+}
+
+function clampPlanPosition(x,y,mapWidth,mapHeight){
+  // Желтая метка не должна вылезать за границы изображения.
+  const isMobile=mapWidth<=700;
+  const halfX=isMobile ? 12 : Math.min(30, Math.max(18, mapWidth*0.03));
+  const labelH=isMobile ? 16 : 34;
+
+  return {
+    x:Math.max(halfX,Math.min(mapWidth-halfX,x)),
+    y:Math.max(0,Math.min(mapHeight-labelH,y))
+  };
+}
+
 function renderMiniMap(found=[]){
   const root=document.getElementById("planMarkers");
   const legend=document.getElementById("miniMapLegend");
-  if(!root)return;
+  const plan=document.getElementById("warehousePlan");
+  if(!root || !plan)return;
 
   root.innerHTML="";
 
-  // Подсвечиваем только найденные места в центре прохода.
-  // Никаких горизонтальных/вертикальных палочек — только мягкое свечение.
+  // Группируем по реальной ячейке: одна ячейка = один маркер.
   const groups=new Map();
 
   for(const x of (found||[])){
@@ -2469,28 +2502,34 @@ function renderMiniMap(found=[]){
     }
   }
 
+  const mapWidth=plan.clientWidth || 1277;
+  const mapHeight=plan.clientHeight || 694;
+  const scaleX=mapWidth/1277;
+  const scaleY=mapHeight/694;
+
   for(const g of groups.values()){
-    const x=planMap.aisleX[g.s];
+    const baseX=planMap.aisleX[g.s]*scaleX;
 
     // Координата по вертикали: 4–10 сверху, 1–3 снизу.
-    let top;
+    let designY;
     if(g.n>=4){
-      // 4 = низ верхней секции, 10 = её верх.
-      top = 335 - ((g.n-4)/6)*247;
+      designY = 335 - ((g.n-4)/6)*247;
     }else{
-      // 1–3 = нижняя секция.
-      top = 670 - ((g.n-1)/2)*165;
+      designY = 670 - ((g.n-1)/2)*165;
     }
+    const baseY=designY*scaleY;
 
-    const p=planPercent(x,top);
+    // Для каждой полки даём своё небольшое горизонтальное смещение.
+    const rawX=baseX + planShelfOffset(g.l,mapWidth);
+    const safe=clampPlanPosition(rawX,baseY,mapWidth,mapHeight);
 
     const marker=document.createElement("div");
     marker.className="plan-marker";
     marker.id=`plan-marker-S${g.s}-${g.l}-${g.n}`;
-    marker.style.left=p.left+"%";
-    marker.style.top=p.top+"%";
-    // Каждый индикатор имеет собственную небольшую область нажатия.
-    marker.style.zIndex=10 + Number(g.n);
+    marker.style.left=safe.x+"px";
+    marker.style.top=safe.y+"px";
+    // Маркеры всегда остаются кликабельными поверх изображения.
+    marker.style.zIndex=20 + Number(g.n);
 
     const highlight=document.createElement("div");
     highlight.className="plan-aisle-highlight";
@@ -2555,14 +2594,43 @@ function activateMapTarget(markerId){
 }
 
 function showResultOnMap(s,l,n){
-  const wrap=document.getElementById("miniMapWrap");
-  if(wrap) wrap.scrollIntoView({behavior:"smooth",block:"start"});
+  const markerId=`plan-marker-${s}-${l}-${n}`;
 
-  // После окончания прокрутки ищем именно маленький индикатор этой ячейки.
+  // Сначала убеждаемся, что план уже отрисован.
+  const marker=document.getElementById(markerId);
+  const plan=document.getElementById("warehousePlan");
+  if(!marker || !plan){
+    setTimeout(()=>showResultOnMap(s,l,n),120);
+    return;
+  }
+
+  // Центрируем в видимой части экрана именно ЖЁЛТУЮ метку,
+  // а не весь блок карты. Это работает и тогда, когда карта
+  // не помещается целиком на экран.
+  const highlight=marker.querySelector(".plan-aisle-highlight");
+  const markerRect=(highlight||marker).getBoundingClientRect();
+  const header=document.querySelector("header");
+  const headerBottom=header ? header.getBoundingClientRect().bottom : 0;
+
+  const visibleTop=Math.max(headerBottom+12, 0);
+  const visibleHeight=Math.max(120, window.innerHeight-visibleTop);
+  const targetScreenY=visibleTop + visibleHeight/2;
+  const markerCenterY=markerRect.top + markerRect.height/2;
+
+  const targetScroll=window.scrollY + markerCenterY - targetScreenY;
+  const maxScroll=Math.max(0,document.documentElement.scrollHeight-window.innerHeight);
+  const safeScroll=Math.max(0,Math.min(maxScroll,targetScroll));
+
+  window.scrollTo({
+    top:safeScroll,
+    behavior:"smooth"
+  });
+
+  // Подсветка включается уже после программной прокрутки,
+  // чтобы собственное событие scroll не сняло её мгновенно.
   setTimeout(()=>{
-    const markerId=`plan-marker-${s}-${l}-${n}`;
     activateMapTarget(markerId);
-  },650);
+  },750);
 }
 
 function doSearch(){
