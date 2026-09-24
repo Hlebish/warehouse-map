@@ -685,10 +685,12 @@ function normalizeData(d){
 }
 function safeFirebaseKey(value){
   // Firebase Realtime Database forbids . # $ / [ ] in object keys.
-  // Encode them only for the technical key; visible Excel text is never changed.
-  return String(value??"").replace(/[.#$\/\[\]]/g,ch=>({
-    ".":"%2E","#":"%23","$":"%24","/":"%2F","[":"%5B","]":"%5D"
-  })[ch]);
+  // Encode EVERY character into a Firebase-safe hexadecimal key.
+  // This also handles unusual characters/newlines coming from Excel.
+  // The visible article text itself is never changed.
+  return Array.from(String(value??""))
+    .map(ch=>ch.codePointAt(0).toString(16).padStart(6,"0"))
+    .join("_");
 }
 function itemKey(addr,line){
   return safeFirebaseKey(addr+"|"+String(line||"").trim());
@@ -2354,13 +2356,7 @@ function activateMapTarget(markerId){
 
 function showResultOnMap(s,l,n){
   const wrap=document.getElementById("miniMapWrap");
-  if(wrap){
-    // Прокручиваем так, чтобы вся карта оказалась ровно по центру экрана,
-    // а не прижималась к верхнему краю под sticky-header.
-    const rect=wrap.getBoundingClientRect();
-    const targetY=window.scrollY+rect.top-(window.innerHeight-rect.height)/2;
-    window.scrollTo({top:Math.max(0,targetY),behavior:"smooth"});
-  }
+  if(wrap) wrap.scrollIntoView({behavior:"smooth",block:"start"});
 
   // После окончания прокрутки ищем именно маленький индикатор этой ячейки.
   setTimeout(()=>{
