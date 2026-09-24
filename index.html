@@ -307,11 +307,11 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
     overflow:visible;
   }
   .plan-aisle-label{
-    width:18px !important;
-    height:14px !important;
-    min-width:18px;
-    max-width:18px;
-    font-size:8px !important;
+    width:16px !important;
+    height:12px !important;
+    min-width:16px;
+    max-width:16px;
+    font-size:7px !important;
     line-height:1 !important;
     font-weight:800;
     padding:0;
@@ -2449,23 +2449,20 @@ function planShelfOffset(letter, mapWidth){
   const l=String(letter||"").toUpperCase();
   const w=Number(mapWidth||0);
 
-  // Все маркеры остаются ВНУТРИ прохода своего S1–S5.
-  // A–E занимают левую половину прохода, F–K — правую.
-  // Смещения специально небольшие, чтобы маркер не залезал на стеллаж.
-  const scale=Math.max(0.72,Math.min(1.12,w/1050));
-  const left={A:-23,B:-18,C:-13,D:-8,E:-3};
-  const right={F:3,G:8,H:13,J:18,K:23};
-  const px=(left[l] ?? right[l] ?? 0)*scale;
+  // ВАЖНО: все буквы одной стороны должны лежать строго на одной
+  // вертикальной линии прохода. Никаких смещений A→E/F→K.
+  // Так маркеры повторяют реальную линию стеллажа на плане.
+  const scale=Math.max(0.78,Math.min(1.08,w/1050));
+  const leftSide=-20;
+  const rightSide=20;
+  const px=("ABCDE".includes(l) ? leftSide : ("FGHJK".includes(l) ? rightSide : 0))*scale;
   return px;
 }
 
 function planShelfYOffset(letter,mapHeight){
-  const l=String(letter||"").toUpperCase();
-  const scale=Math.max(0.72,Math.min(1.08,Number(mapHeight||694)/694));
-  // Небольшой вертикальный шаг только для разводки соседних маркеров;
-  // он не меняет их ячейку и не выносит их из соответствующего прохода.
-  const offsets={A:-8,B:-4,C:0,D:4,E:8,F:-8,G:-4,H:0,J:4,K:8};
-  return (offsets[l]||0)*scale;
+  // Маркер должен находиться РОВНО на высоте соответствующей
+  // бежевой ячейки. Поэтому вертикального смещения по букве нет.
+  return 0;
 }
 
 function clampPlanPosition(x,y,mapWidth,mapHeight){
