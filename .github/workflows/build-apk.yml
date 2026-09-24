@@ -1,0 +1,97 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-apk:
+    name: Build Warehouse Map APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: |
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Create Capacitor project
+        run: |
+          mkdir -p app/www
+          cp index.html app/www/index.html
+
+          if [ -f warehouse-plan.png ]; then
+            cp warehouse-plan.png app/www/warehouse-plan.png
+          fi
+
+          cd app
+
+          cat > package.json <<'EOF'
+          {
+            "name": "warehouse-map",
+            "version": "1.0.0",
+            "private": true,
+            "scripts": {
+              "build": "echo Web app ready"
+            },
+            "dependencies": {
+              "@capacitor/core": "^8.5.0",
+              "@capacitor/android": "^8.5.0"
+            },
+            "devDependencies": {
+              "@capacitor/cli": "^8.5.0"
+            }
+          }
+          EOF
+
+          npm install
+
+          cat > capacitor.config.json <<'EOF'
+          {
+            "appId": "com.hlebish.warehousemap",
+            "appName": "Карта склада",
+            "webDir": "www",
+            "android": {
+              "minWebViewVersion": 60
+            }
+          }
+          EOF
+
+          npx cap add android
+          npx cap sync android
+
+      - name: Build APK
+        working-directory: app/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Rename APK
+        run: |
+          mkdir -p release
+          cp app/android/app/build/outputs/apk/debug/app-debug.apk \
+             release/warehouse-map.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: warehouse-map-android
+          path: release/warehouse-map.apk
