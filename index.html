@@ -1,0 +1,458 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Интерактивная карта склада</title>
+<style>
+:root{--bg:#eef1f4;--card:#fff;--ink:#18212b;--muted:#66717d;--accent:#1f6feb;--empty:#e8edf2;--filled:#7ccf8a;--border:#c8d0d8;--search:#ef4444}
+*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:var(--bg);color:var(--ink)}
+header{background:#17212b;color:#fff;padding:16px 20px;position:sticky;top:0;z-index:1000;box-shadow:0 2px 10px #0002}
+h1{margin:0 0 8px;font-size:24px}.sub{font-size:13px;color:#cbd5df}.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+input,button{font:inherit;border:1px solid var(--border);border-radius:8px;padding:9px 11px;background:#fff}
+button{cursor:pointer;font-weight:600}button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+main{padding:12px;max-width:1500px;width:100%;margin:auto;overflow:hidden}
+.legend{display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-bottom:14px;color:var(--muted);font-size:13px}
+.dot{display:inline-block;width:13px;height:13px;border-radius:4px;vertical-align:-2px;margin-right:5px;border:1px solid var(--border)}
+.sync{font-weight:700}.sync.ok{color:#2e6b3b}.sync.warn{color:#9a6500}.sync.err{color:#b42318}
+.map{display:grid;grid-template-columns:repeat(5,minmax(230px,1fr));gap:14px}
+.street{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px;box-shadow:0 2px 7px #0000000b;min-width:0}
+.street h2{margin:0 0 10px;text-align:center;background:#17212b;color:white;border-radius:9px;padding:8px;font-size:18px}
+.sides{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}.sides.single-side{grid-template-columns:1fr}
+.side{min-width:0}.side h3{font-size:13px;text-align:center;margin:5px 0 7px;color:var(--muted)}
+.shelf{border:1px solid #9eaab5;border-radius:8px;overflow:hidden;margin-bottom:9px;background:#fafbfc}
+.shelf-title{padding:5px 7px;background:#f0f3f6;font-weight:700;text-align:center;font-size:13px;color:#000}
+.cells{display:grid;grid-template-columns:repeat(5,32px);gap:5px;padding:6px;justify-content:center}
+.cell{width:32px;height:30px;min-height:30px;border:1px solid #b9c2ca;border-radius:6px;background:var(--empty);font-size:11px;padding:0;cursor:pointer;text-align:center}
+.cell:hover{outline:2px solid var(--accent);outline-offset:1px;z-index:1}.cell.filled{background:var(--filled);font-weight:700}
+.cell.search-hit{background:var(--search)!important;color:#fff!important;border-color:#b91c1c;box-shadow:0 0 0 2px #ef444466,0 2px 8px #ef444466}
+.stats{margin:10px 0;color:var(--muted);font-size:13px}
+#modal,#specialModal{position:fixed;inset:0;background:#0007;display:none;align-items:center;justify-content:center;padding:16px;z-index:20}
+#specialModal{z-index:30}.dialog{background:white;border-radius:14px;width:min(520px,100%);padding:18px;box-shadow:0 10px 40px #0005}
+.dialog h2{margin-top:0}.addr{font-family:monospace;color:var(--accent);font-weight:700}
+label{display:block;font-size:13px;font-weight:700;margin:13px 0 6px}
+textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--border);border-radius:8px;padding:10px;font:inherit}
+.actions{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}.result{background:#fff;border:1px solid var(--border);border-radius:10px;padding:10px;margin:7px 0;cursor:pointer}
+.result strong{display:block;color:#1264d8;font-size:14px}
+.result .article{display:block;margin-top:5px;color:#222;font-size:13px;font-weight:700}
+ .result:hover{border-color:var(--accent)}
+.search-results-head{
+  font-weight:700;
+  margin:8px 0 6px;
+  color:var(--ink);
+}
+.search-result-row{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  background:#fff;
+  border:1px solid var(--border);
+  border-radius:9px;
+  padding:7px 9px;
+  margin:5px 0;
+  cursor:pointer;
+}
+.search-result-info{
+  flex:1 1 auto;
+  min-width:0;
+  overflow:hidden;
+}
+.search-result-info strong{
+  display:inline-block;
+  color:#1264d8;
+  font-size:13px;
+  margin-right:8px;
+  white-space:nowrap;
+}
+.search-result-info .article{
+  display:inline;
+  margin:0;
+  color:#222;
+  font-size:12px;
+  font-weight:700;
+  line-height:1.25;
+  overflow-wrap:anywhere;
+}
+.search-result-map-btn{
+  flex:0 0 auto;
+  border:1px solid #b8c4d0;
+  background:#f7f9fb;
+  color:#1264d8;
+  border-radius:7px;
+  padding:5px 8px;
+  font:700 11px/1.1 inherit;
+  cursor:pointer;
+  white-space:nowrap;
+}
+.search-result-map-btn:hover{background:#eaf2ff;border-color:#7da7e8}
+.plan-marker.plan-marker-focus .plan-aisle-label{
+  animation:planMarkerPulse .9s ease 2;
+}
+@keyframes planMarkerPulse{
+  0%,100%{transform:scale(1)}
+  50%{transform:scale(1.28)}
+}
+@media(max-width:520px){
+  .search-result-row{
+    gap:6px;
+    padding:6px 7px;
+    margin:4px 0;
+  }
+  .search-result-info strong{font-size:12px;margin-right:5px}
+  .search-result-info .article{font-size:11px;line-height:1.18}
+  .search-result-map-btn{
+    padding:5px 6px;
+    font-size:9px;
+  }
+  .search-results-head{margin:6px 0 4px;font-size:14px}
+}
+.special-storage{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:12px auto;max-width:1500px;padding:0 12px}
+.special-box{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:6px;box-shadow:0 2px 7px #0000000b;min-width:0}
+.special-cell{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;width:100%;min-height:54px;padding:9px;border:1px solid #b9c2ca;border-radius:8px;background:#f5f7f9;color:#25313d;cursor:pointer;font:inherit}
+.special-cell:hover{background:#eaf0f5;border-color:#8d9aa7;box-shadow:0 2px 7px #00000012}.special-cell:active{transform:scale(.985)}
+.special-cell strong{font-size:13px}.special-cell small{max-width:95%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#53606c;font-weight:400}
+.special-cell.filled{background:var(--filled);border-color:#9bbba3}.special-cell.filled strong{color:#2e5b39}
+@media(min-width:1100px){
+ main{padding:14px 18px}.map{grid-template-columns:minmax(125px,1fr) repeat(4,minmax(235px,2fr));gap:8px}
+ .street{padding:7px}.street h2{font-size:15px;padding:6px}.sides{gap:6px}.side h3{font-size:9px}
+ .shelf-title{font-size:9px;padding:3px}.cells{grid-template-columns:repeat(5,22px);gap:3px;padding:5px}
+ .cell{width:22px;min-width:22px;height:23px;min-height:23px;font-size:9px}
+}
+@media(max-width:1099px){.map{grid-template-columns:1fr}.street{width:100%}.sides{gap:8px}.cells{grid-template-columns:repeat(5,30px);gap:5px}.cell{width:30px;min-width:30px;height:29px;min-height:29px;font-size:10px}.side h3{font-size:10px}.shelf-title{font-size:10px}}
+@media(max-width:520px){main{padding:8px}.map{gap:8px}.street{padding:6px}.sides{gap:5px}.cells{grid-template-columns:repeat(5,27px);gap:4px;padding:5px}.cell{width:27px;min-width:27px;height:27px;min-height:27px}.special-storage{grid-template-columns:1fr;gap:8px;padding:0 8px}.special-cell{min-height:52px}}
+#loginScreen{
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,.92);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  z-index:99999;
+}
+
+#loginBox{
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:14px;
+  padding:30px;
+  width:360px;
+  max-width:90%;
+  text-align:center;
+  box-shadow:0 10px 40px #000;
+}
+
+#loginBox h2{
+  margin-top:0;
+}
+
+#loginBox p{
+  color:var(--muted);
+  margin-bottom:20px;
+}
+.dialog select,.dialog input[type="text"]{width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #b8c4d0;border-radius:8px;font-size:16px;background:#fff}
+#moveModal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);align-items:center;justify-content:center;z-index:10000}
+#moveModal .dialog{max-width:520px;width:calc(100% - 32px)}
+.item-meta{margin-top:10px;border:1px solid #d7dee6;border-radius:8px;background:#f7f9fb;padding:8px;font-size:12px;color:#52606d}
+.item-meta-row{padding:5px 0;border-bottom:1px solid #e1e6eb}.item-meta-row:last-child{border-bottom:0}
+.item-meta-row strong{color:#1f2937}.history-entry{border:1px solid #d7dee6;border-radius:9px;padding:9px;margin:7px 0;background:#fff;font-size:13px}
+.history-entry .history-time{color:#66717d;font-size:11px;margin-bottom:4px}
+#moveModal .move-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+#moveModal .move-grid label{margin:0}
+#moveModal .move-grid select{width:100%}
+#moveModal .move-detail{margin-top:12px}
+#moveModal .move-detail select{width:100%}
+@media(max-width:600px){
+  #moveModal .move-grid{grid-template-columns:1fr 1fr}
+  #moveModal .move-detail{grid-column:1/-1}
+}
+.history-entry .history-move{font-weight:700;color:#1f6feb}.history-entry .history-add{color:#2e6b3b;font-weight:700}.history-entry .history-remove{color:#b42318;font-weight:700}
+#historyModal{position:fixed;inset:0;background:#0007;display:none;align-items:center;justify-content:center;padding:16px;z-index:40}
+#historyModal .dialog{width:min(760px,100%);max-height:85vh;overflow:auto}
+.history-toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.history-toolbar input,.history-toolbar select{flex:1 1 180px}
+
+
+
+.mini-map-wrap{
+  background:#fff;
+  border:1px solid var(--border);
+  border-radius:14px;
+  padding:10px;
+  margin:14px auto 14px;
+  box-shadow:0 2px 7px #0000000b;
+}
+.mini-map-title{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  margin:0 2px 8px;
+}
+.mini-map-title strong{font-size:15px;color:var(--ink)}
+.mini-map-legend{font-size:11px;color:var(--muted)}
+.warehouse-plan{
+  position:relative;
+  width:100%;
+  max-width:1050px;
+  aspect-ratio:1277 / 694;
+  margin:0 auto;
+  overflow:hidden;
+  border-radius:10px;
+  background:#e7ebef;
+}
+.warehouse-plan img{
+  display:block;
+  width:100%;
+  height:100%;
+  object-fit:fill;
+  user-select:none;
+}
+#planMarkers{
+  position:absolute;
+  inset:0;
+}
+.plan-marker{
+  position:absolute;
+  transform:translate(-50%,0);
+  width:0;
+  height:0;
+  cursor:pointer;
+  z-index:3;
+}
+.plan-aisle-highlight{
+  position:absolute;
+  left:50%;
+  transform:translateX(-50%);
+  width:54px;
+  height:34px;
+  border:none;
+  background:transparent;
+  border-radius:50%;
+  box-shadow:none;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  pointer-events:auto;
+  cursor:pointer;
+  z-index:5;
+}
+.plan-aisle-label{
+  color:#fff;
+  width:44px;
+  height:30px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  box-sizing:border-box;
+  background:radial-gradient(circle,
+    rgba(255,214,65,.82) 0%,
+    rgba(255,214,65,.48) 32%,
+    rgba(255,214,65,.16) 62%,
+    rgba(255,214,65,0) 82%);
+  border:none;
+  border-radius:50%;
+  padding:0;
+  text-align:center;
+  font:800 19px/1 Arial,sans-serif;
+  white-space:nowrap;
+  text-shadow:
+    0 1px 2px rgba(0,0,0,.7),
+    0 0 5px rgba(255,224,90,.9);
+  filter:drop-shadow(0 0 4px rgba(255,214,65,.65));
+  transition:transform .12s ease, filter .12s ease;
+}
+.plan-aisle-highlight:hover .plan-aisle-label{
+  transform:scale(1.15);
+  filter:drop-shadow(0 0 7px rgba(255,214,65,.95));
+}
+
+
+
+.plan-badge .plan-side-arrow{
+  font-size:10px;
+  line-height:1;
+}
+.plan-connector{
+  position:absolute;
+  left:0;
+  top:0;
+  height:2px;
+  background:#f0c978;
+  box-shadow:0 0 5px rgba(240,201,120,.9);
+  transform-origin:0 50%;
+}
+.plan-badge:hover{
+  transform:translate(-50%,-50%) scale(1.06);
+}
+@keyframes planPulse{
+  0%,100%{opacity:.74}
+  50%{opacity:1}
+}
+@media(max-width:700px){
+  .mini-map-title{align-items:flex-start;flex-direction:column}
+  .plan-badge{font-size:9px;padding:2px 4px;border-width:1.5px}
+  .plan-badge .plan-side-arrow{font-size:8px}
+  /* МОБИЛЬНЫЙ РЕЖИМ: маленькая точка строго в центре прохода */
+  .plan-aisle-highlight{
+    width:20px !important;
+    height:16px !important;
+    left:50%;
+    transform:translateX(-50%);
+    overflow:visible;
+  }
+  .plan-aisle-label{
+    width:18px !important;
+    height:14px !important;
+    min-width:18px;
+    max-width:18px;
+    font-size:8px !important;
+    line-height:1 !important;
+    font-weight:800;
+    padding:0;
+    border-radius:50%;
+    background:radial-gradient(circle,
+      rgba(255,214,65,.72) 0%,
+      rgba(255,214,65,.28) 45%,
+      rgba(255,214,65,0) 75%) !important;
+    text-shadow:0 1px 2px rgba(0,0,0,.9);
+    filter:drop-shadow(0 0 2px rgba(255,214,65,.55));
+  }
+  .plan-aisle-highlight:hover .plan-aisle-label,
+  .plan-aisle-highlight:active .plan-aisle-label{
+    transform:none !important;
+  }
+}
+@media(max-width:1099px){
+ .mini-map{grid-template-columns:repeat(2,minmax(150px,1fr))}
+}
+@media(max-width:520px){
+ .mini-map{grid-template-columns:1fr}
+}
+</style>
+<style>
+/* Активная ячейка после кнопки «На карте»: красная и мигает,
+   пока пользователь не начнёт двигать страницу. */
+.plan-aisle-highlight.map-target-active .plan-aisle-label{
+  color:#fff !important;
+  background:radial-gradient(circle,
+    rgba(255,45,45,.98) 0%,
+    rgba(255,45,45,.68) 35%,
+    rgba(255,45,45,.22) 62%,
+    rgba(255,45,45,0) 82%) !important;
+  filter:drop-shadow(0 0 5px rgba(255,35,35,.95));
+  animation:mapTargetBlink .55s ease-in-out infinite alternate;
+}
+@keyframes mapTargetBlink{
+  from{transform:scale(1);opacity:.65}
+  to{transform:scale(1.25);opacity:1}
+}
+</style>
+<style>/* Excel import UI */.excel-modal{position:fixed;inset:0;background:rgba(0,0,0,.58);display:none;align-items:center;justify-content:center;padding:16px;z-index:10050}.excel-dialog{background:#fff;border-radius:16px;width:min(620px,100%);max-height:88vh;overflow:auto;box-shadow:0 18px 60px #0007;padding:20px;color:var(--ink)}.excel-head{display:flex;align-items:flex-start;gap:12px;margin-bottom:16px}.excel-icon{width:42px;height:42px;flex:0 0 42px;border-radius:11px;background:#eaf2ff;color:#1f6feb;display:flex;align-items:center;justify-content:center;font-size:21px}.excel-head h2{margin:0 0 4px;font-size:20px}.excel-file{font-size:12px;color:var(--muted);overflow-wrap:anywhere}.excel-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0}.excel-stat{background:#f6f8fa;border:1px solid #e0e5ea;border-radius:10px;padding:11px}.excel-stat b{display:block;font-size:18px;margin-bottom:2px}.excel-stat span{font-size:11px;color:var(--muted)}.excel-section{margin-top:14px}.excel-section-title{font-size:13px;font-weight:700;margin-bottom:7px}.excel-preview{background:#f7f9fb;border:1px solid #dce3e9;border-radius:10px;padding:9px;max-height:150px;overflow:auto;font-size:12px}.excel-preview-row{padding:7px 4px;border-bottom:1px solid #e3e8ed}.excel-preview-row:last-child{border-bottom:0}.excel-preview-row strong{color:#1264d8;margin-right:7px}.excel-warn{background:#fff8e7;border:1px solid #f2d38a;color:#805b00;border-radius:10px;padding:10px;font-size:12px}.excel-error{background:#fff0f0;border:1px solid #f2b8b8;color:#9b1c1c;border-radius:10px;padding:11px;font-size:13px}.excel-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}.excel-actions button{min-width:105px}.excel-primary{background:var(--accent)!important;color:#fff!important;border-color:var(--accent)!important}.excel-success-icon{background:#eaf8ed;color:#2e7d46}.excel-error-icon{background:#fff0f0;color:#b42318}.excel-close{margin-left:auto;border:0;background:transparent;font-size:24px;line-height:1;color:#66717d;padding:0 4px}.excel-close:hover{background:#f1f3f5}@media(max-width:520px){.excel-dialog{padding:16px}.excel-stats{grid-template-columns:1fr 1fr}.excel-stat:last-child{grid-column:1/-1}.excel-actions{flex-direction:column-reverse}.excel-actions button{width:100%}}</style>
+</head>
+<body>
+
+<div id="loginScreen" style="
+  position:fixed;
+  inset:0;
+  z-index:9999;
+  background:#121212;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  text-align:center;
+  font-family:Arial,sans-serif;
+">
+  <div style="
+    background:#1e1e1e;
+    padding:30px;
+    border-radius:16px;
+    box-shadow:0 10px 40px rgba(0,0,0,.5);
+    max-width:360px;
+    width:calc(100% - 40px);
+  ">
+    <h2 style="margin-top:0;color:#fff;">🔐 Доступ к складу</h2>
+
+    <p style="color:#aaa;margin-bottom:25px;">
+      Войдите через Google, чтобы открыть карту склада.
+    </p>
+
+    <button onclick="loginWithGoogle()" style="
+      width:100%;
+      padding:12px 18px;
+      border:0;
+      border-radius:10px;
+      background:#fff;
+      color:#222;
+      font-size:15px;
+      font-weight:600;
+      cursor:pointer;
+    ">
+      Войти через Google
+    </button>
+
+    <div id="loginError" style="
+      color:#ff6b6b;
+      margin-top:15px;
+      font-size:13px;
+      display:none;
+    "></div>
+  </div>
+</div>
+
+<div id="excelModal" class="excel-modal" aria-hidden="true"><div class="excel-dialog" role="dialog" aria-modal="true"><div class="excel-head"><div id="excelModalIcon" class="excel-icon">📥</div><div style="min-width:0;flex:1"><h2 id="excelModalTitle">Импорт Excel</h2><div id="excelModalFile" class="excel-file"></div></div><button class="excel-close" type="button" onclick="closeExcelModal()">×</button></div><div id="excelModalBody"></div><div id="excelModalActions" class="excel-actions"></div></div></div>
+<header>
+<h1>📦 Интерактивная карта склада</h1>
+<div class="sub">Адрес: улица (S1–S5) → полка (A–E слева / F–K справа)</div>
+<div class="toolbar">
+<input id="search" type="search" placeholder="🔎 Поиск детали, артикула или адреса…" style="width:100%;min-width:0">
+<button class="primary" onclick="document.getElementById('excelFile').click()">📥 Загрузить Excel</button>
+<button data-edit-only onclick="temporaryClearWarehouse()" style="background:#fee2e2;color:#991b1b;border-color:#fca5a5">🗑️ Очистить склад</button><button onclick="openHistory()">🕘 История</button>
+<input id="excelFile" type="file" accept=".xlsx,.xls" style="display:none">
+</div>
+</header>
+<main>
+<div class="legend">
+<span><i class="dot" style="background:var(--empty)"></i>пустая</span>
+<span><i class="dot" style="background:var(--filled)"></i>занята</span>
+<span>Нажми на ячейку — откроется карточка хранения.</span>
+<span id="syncStatus" class="sync warn">☁️ Подключение к Firebase…</span>
+</div>
+
+<div id="results"></div>
+<div id="miniMapWrap" class="mini-map-wrap">
+  <div class="mini-map-title">
+    <strong>🗺️ Планировка склада</strong>
+    <span id="miniMapLegend" class="mini-map-legend">При поиске подсветится нужная полка и номер ячейки</span>
+  </div>
+  <div id="warehousePlan" class="warehouse-plan">
+    <img src="warehouse-plan.png" alt="Планировка склада">
+    <div id="planMarkers"></div>
+  </div>
+</div>
+<div id="stats" class="stats"></div>
+<div id="map" class="map"></div>
+</main>
+
+<div class="special-storage">
+<section class="special-box"><button class="special-cell" id="resaleCell" onclick="openSpecial('resale')"><strong>Перекупной товар</strong><small id="resalePreview"></small></button></section>
+<section class="special-box"><button class="special-cell" id="defectCell" onclick="openSpecial('defect')"><strong>Брак</strong><small id="defectPreview"></small></button></section>
+</div>
+
+<div id="specialModal"><div class="dialog">
+<h2 id="specialTitle"></h2><label>Что находится здесь</label>
+<textarea id="specialContent" placeholder="Например: APHD4307 — 1 шт.&#10;Можно указать несколько артикулов."></textarea>
+<div class="actions"><button onclick="closeSpecial()">Отмена</button><button data-edit-only class="primary" onclick="saveSpecial()">Сохранить</button></div>
+</div></div>
+
+<div id="modal"><div class="dialog">
+<h2>Ячейка <span id="addr" class="addr"></span></h2><label>Что лежит в ячейке</label>
+<textarea id="content" placeholder="Например: APHD4307 — капот Honda, 2 шт.&#10;Можно указать несколько позиций."></textarea>
+<div id="itemMetaList" class="item-meta"></div>
+<div class="actions">
+<button onclick="closeModal()">Отмена</button>
+<button data-edit-only onclick="openMoveModal()">📦 Переместить деталь</button>
+<button data-edit-only class="primary" onclick="saveCell()">Сохранить</button>
+</div>
+</div></div>
+
+<div id="moveModal"><div c
