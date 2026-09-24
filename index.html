@@ -896,7 +896,7 @@ function initHistoryUi(){
   document.getElementById("historyType")?.addEventListener("change",renderHistory);
 }
 
-function linesOf(value){return String(value||"").split(/\\r?\\n/).map(x=>x.trim()).filter(Boolean);}
+function linesOf(value){return String(value||"").split(/\r?\n/).map(x=>x.trim()).filter(Boolean);}
 function metaFor(addr,line){
  const key=itemKey(addr,line);
  return itemMeta[key]||{addedAt:null,updatedAt:null};
