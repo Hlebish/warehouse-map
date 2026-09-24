@@ -1850,31 +1850,73 @@ function excelCellText(value){
 
 function findExcelColumns(row,columnMap){
   const cells=(row||[]).map(excelCellText);
-
-  // Фиксированный формат твоего Excel из 1С:
-  // A (0) = описание детали / модель автомобиля
-  // B (1) = артикул
-  // C (2) = адрес хранения
-  // Для обычных строк используем именно этот порядок,
-  // чтобы автоопределение не путало описание и артикул.
-  if(cells.length>=3){
-    return {
-      description: cells[0]||"",
-      article: cells[1]||"",
-      location: cells[2]||""
-    };
-  }
-
-  // Запасной вариант для старых/нестандартных файлов.
-  const descIndex = columnMap?.description>=0 ? columnMap.description : -1;
-  const articleIndex = columnMap?.article>=0 ? columnMap.article : (cells.length>=2 ? 0 : -1);
-  const locationIndex = columnMap?.location>=0 ? columnMap.location : (cells.length>=2 ? 1 : -1);
+  const descIndex=Number.isInteger(columnMap?.description)?columnMap.description:-1;
+  const articleIndex=Number.isInteger(columnMap?.article)?columnMap.article:-1;
+  const locationIndex=Number.isInteger(columnMap?.location)?columnMap.location:-1;
 
   return {
     description: descIndex>=0 ? (cells[descIndex]||"") : "",
     article: articleIndex>=0 ? (cells[articleIndex]||"") : "",
     location: locationIndex>=0 ? (cells[locationIndex]||"") : ""
   };
+}
+
+function detectExcelColumns(rows){
+  // В выгрузке 1С служебная информация занимает первые строки,
+  // а настоящие заголовки находятся ниже. В текущем файле:
+  // B = Номенклатура, C = Артикул, D = Місце зберігання.
+  // Поэтому нельзя брать rows[0] как строку заголовков.
+  const result={description:-1,article:-1,location:-1,headerRow:-1};
+  const maxScan=Math.min(rows.length,40);
+
+  const normalizeHeader=v=>String(v??"")
+    .toLowerCase()
+    .replace(/ё/g,"е")
+    .replace(/і/g,"и")
+    .replace(/ї/g,"и")
+    .replace(/є/g,"е")
+    .replace(/\s+/g," ")
+    .trim();
+
+  for(let r=0;r<maxScan;r++){
+    const row=rows[r]||[];
+    for(let c=0;c<row.length;c++){
+      const h=normalizeHeader(row[c]);
+      if(!h)continue;
+
+      if(result.description<0 && (/^номенклатура$/.test(h)||/описан|наимен|назван/.test(h)))
+        result.description=c;
+      if(result.article<0 && (/^артикул$/.test(h)||/артикул|код/.test(h)))
+        result.article=c;
+      if(result.location<0 && (/місце зберігання|место хранения|ячейк|адрес|хранен/.test(h)))
+        result.location=c;
+    }
+
+    if(result.description>=0 && result.article>=0 && result.location>=0){
+      result.headerRow=r;
+      return result;
+    }
+  }
+
+  // Запасной вариант: ищем колонку адреса по реальным значениям,
+  // а остальные две колонки берём рядом с ней.
+  for(let c=0;c<Math.max(...rows.slice(0,Math.min(rows.length,20)).map(r=>(r||[]).length),0);c++){
+    const sample=rows.slice(0,Math.min(rows.length,20))
+      .map(r=>String(r?.[c]??"").toUpperCase())
+      .join(" ");
+    if(/\bS[1-5]\s*(?:[,;:\-]|\s)\s*[A-K]\s*\d{1,2}/i.test(sample) ||
+       /\bS[1-5]\s*[-,]/i.test(sample)){
+      result.location=c;
+      break;
+    }
+  }
+
+  if(result.location>=0){
+    result.article=result.article>=0?result.article:Math.max(0,result.location-1);
+    result.description=result.description>=0?result.description:Math.max(0,result.location-2);
+  }
+
+  return result;
 }
 
 function makeImportedCellContent(description, article){
@@ -2047,62 +2089,29 @@ async function importExcelFile(file){
       return;
     }
 
-    // Определяем колонки по заголовкам. Текущий Excel из 1С:
-    // A = Описание, B = Артикул, C = Ячейка.
-    const headers=(rows[0]||[]).map(v=>String(v||"").trim().toLowerCase());
+    // Находим настоящую строку заголовков внутри выгрузки 1С.
+    // В этом файле данные находятся не с первой строки: сверху есть
+    // служебный текст отчёта.
+    const columnMap=detectExcelColumns(rows);
 
-    const columnMap={
-      description: headers.findIndex(h =>
-        /описан|наимен|назван/.test(h)
-      ),
-      article: headers.findIndex(h =>
-        /артикул|код/.test(h)
-      ),
-      location: headers.findIndex(h =>
-        /ячейк|адрес|место.*хран|хранен/.test(h)
-      )
-    };
-
-    // Excel из 1С может приходить вообще без заголовков.
-    // Например:
-    // A = Описание, B = Артикул, C = Ячейка, D = Количество
-    // Причём первая строка иногда полностью пустая.
-    // Поэтому определяем колонку адреса по реальным значениям, а не
-    // предполагаем, что при 4 колонках адрес находится в D.
-    const sampleRows=rows.slice(0,Math.min(rows.length,15));
-
-    if(columnMap.location<0){
-      for(let c=0;c<(rows[0]||[]).length;c++){
-        const sample=sampleRows
-          .map(r=>String(r?.[c]??"").toUpperCase())
-          .join(" ");
-        if(/\bS[1-5]\s*[,-]\s*[A-K]\s*[-,]?\s*\d{1,2}/i.test(sample) ||
-           /\bS[1-5]\b/i.test(sample)){
-          columnMap.location=c;
-          break;
-        }
-      }
+    if(columnMap.description<0 || columnMap.article<0 || columnMap.location<0){
+      await showExcelMessage({
+        title:"Не удалось определить колонки",
+        icon:"⚠️",
+        iconClass:"excel-error-icon",
+        body:`<div class="excel-error">Не удалось определить структуру Excel.<br><br>Нужны три колонки: <strong>Номенклатура</strong>, <strong>Артикул</strong> и <strong>Місце зберігання</strong>.</div>`
+      });
+      return;
     }
 
-    if(columnMap.description<0 || columnMap.article<0){
-      // Для беззаголовочного файла сначала используем типичный
-      // формат 3/4 колонок: Описание | Артикул | Ячейка | Количество.
-      const count=Math.max(...rows.map(r=>(r||[]).length),0);
-      if(count>=3){
-        if(columnMap.description<0) columnMap.description=0;
-        if(columnMap.location<0) columnMap.location=2;
-        if(columnMap.article<0){
-          columnMap.article = columnMap.location>0 ? columnMap.location-1 : 1;
-        }
-      }
-    }
+    const imported={};
+    const skipped=[];
+    let rowCount=0;
+    let locationCount=0;
 
-    // Если заголовок всё-таки распознан, его схема имеет приоритет.
-    // Если колонка артикула не определилась, берём колонку перед адресом.
-    if(columnMap.article<0 && columnMap.location>0)
-      columnMap.article=columnMap.location-1;
-    if(columnMap.description<0 && columnMap.article>0)
-      columnMap.description=columnMap.article-1;
+    // Читаем только строки после настоящих заголовков.
+    // Поэтому служебные строки 1С сверху не попадают в импорт.
+    const dataStart=columnMap.headerRow>=0 ? columnMap.headerRow+1 : 0;
 
     const imported={};
     const skipped=[];
@@ -2111,7 +2120,7 @@ async function importExcelFile(file){
 
     // Не привязываемся к первой строке: она может быть пустой или
     // содержать заголовок. findExcelColumns() пропустит пустые строки.
-    for(let i=0;i<rows.length;i++){
+    for(let i=dataStart;i<rows.length;i++){
       const row=rows[i]||[];
       const {description,article,location}=findExcelColumns(row,columnMap);
 
