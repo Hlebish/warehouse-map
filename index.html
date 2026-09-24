@@ -172,8 +172,8 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
   #moveModal .move-detail{grid-column:1/-1}
 }
 .history-entry .history-move{font-weight:700;color:#1f6feb}.history-entry .history-add{color:#2e6b3b;font-weight:700}.history-entry .history-remove{color:#b42318;font-weight:700}
-#historyModal{position:fixed;inset:0;background:#0007;display:none;align-items:center;justify-content:center;padding:16px;z-index:40}
-#historyModal .dialog{width:min(760px,100%);max-height:85vh;overflow:auto}
+#historyModal{position:fixed;inset:0;background:#0007;display:none;align-items:center;justify-content:center;padding:16px;z-index:10020}
+#historyModal .dialog{width:min(760px,100%);max-height:calc(100vh - 32px);overflow:auto}
 .history-toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
 .history-toolbar input,.history-toolbar select{flex:1 1 180px}
 
@@ -1550,9 +1550,7 @@ const bilingualPartAliases={
   "левое крыло":["ліве крило"],
   "правое крыло":["праве крило"]
 };
-for(const [canonical,aliases] of Object.entries(bilingualPartAliases)){
-  partTypeAliases[canonical]=[...new Set([...(partTypeAliases[canonical]||[]),...aliases])];
-}
+// partTypeAliases объявлен ниже. Слияние украинских алиасов выполняем после его объявления.
 
 function levenshtein(a,b){
   if(a===b)return 0;
@@ -1691,6 +1689,11 @@ const partTypeAliases={
   "крышка":["крышка","кришка","lid"],
   "доска":["доска","щити","щиток"]
 };
+
+// Добавляем украинские варианты только после объявления partTypeAliases.
+for(const [canonical,aliases] of Object.entries(bilingualPartAliases)){
+  partTypeAliases[canonical]=[...new Set([...(partTypeAliases[canonical]||[]),...aliases])];
+}
 
 const partCodeTypes={
   "1":["левое крыло","крыло","left wing"],
@@ -2127,14 +2130,16 @@ function exportExcel(){
             if(!article)continue;
 
             rows.push({
+              "Описание":String(parsed.description||"").trim(),
               "Артикул":article,
-              "Адрес хранения":addr
+              "Место хранения":addr
             });
 
             const meta=metaFor(addr,line);
             metaRows.push({
+              "Описание":String(parsed.description||"").trim(),
               "Артикул":article,
-              "Адрес хранения":addr,
+              "Место хранения":addr,
               "Добавлено":meta.addedAt?formatDate(meta.addedAt):"",
               "Изменено":meta.updatedAt?formatDate(meta.updatedAt):""
             });
@@ -2160,11 +2165,10 @@ function exportExcel(){
 
     const workbook=XLSX.utils.book_new();
 
-    // Главный лист: именно два нужных столбца.
-    // Такой формат можно сразу использовать для просмотра/обработки:
-    // каждая строка = один артикул + его адрес.
+    // Главный лист: 3 отдельных столбца — описание, артикул, место хранения.
+    // Каждая строка = одна деталь в одной ячейке.
     const warehouseSheet=XLSX.utils.json_to_sheet(rows,{
-      header:["Артикул","Адрес хранения"]
+      header:["Описание","Артикул","Место хранения"]
     });
     XLSX.utils.book_append_sheet(workbook,warehouseSheet,"Склад");
 
@@ -2173,7 +2177,7 @@ function exportExcel(){
 
     if(metaRows.length){
       const metaSheet=XLSX.utils.json_to_sheet(metaRows,{
-        header:["Артикул","Адрес хранения","Добавлено","Изменено"]
+        header:["Описание","Артикул","Место хранения","Добавлено","Изменено"]
       });
       XLSX.utils.book_append_sheet(workbook,metaSheet,"Метаданные");
     }
@@ -2199,7 +2203,7 @@ function exportExcel(){
     const fileName=`склад_экспорт_${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(d.getMinutes())}.xlsx`;
 
     XLSX.writeFile(workbook,fileName);
-    setSync(`📤 Excel экспортирован · ${rows.length} артикулов` ,"ok");
+    setSync(`📤 Excel экспортирован · ${rows.length} записей` ,"ok");
   }catch(e){
     console.error("Ошибка экспорта Excel:",e);
     setSync("⚠️ Ошибка экспорта Excel","err");
