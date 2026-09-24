@@ -1856,6 +1856,28 @@ function excelCellText(value){
 
 function findExcelColumns(row,columnMap){
   const cells=(row||[]).map(excelCellText);
+
+  // Для выгрузки 1С "кузов весь" структура фиксированная:
+  // A — пустая служебная колонка
+  // B — Номенклатура (описание детали / модель)
+  // C — Артикул
+  // D — Місце зберігання
+  // E — Количество
+  // Поэтому для такого файла используем именно B/C/D, даже если
+  // автоматическое определение заголовков вдруг ошибётся.
+  const is1CBody = cells.length >= 4 && (
+    (cells[1] && cells[2]) || (cells[3] && /\bS[1-5]\b/i.test(cells[3]))
+  );
+
+  if(is1CBody){
+    return {
+      description: cells[1]||"",
+      article: cells[2]||"",
+      location: cells[3]||""
+    };
+  }
+
+  // Универсальный fallback для других совместимых Excel.
   const descIndex=Number.isInteger(columnMap?.description)?columnMap.description:-1;
   const articleIndex=Number.isInteger(columnMap?.article)?columnMap.article:-1;
   const locationIndex=Number.isInteger(columnMap?.location)?columnMap.location:-1;
@@ -1926,13 +1948,14 @@ function detectExcelColumns(rows){
 }
 
 function makeImportedCellContent(description, article){
-  // Excel из 1С: A — пустая служебная колонка,
-  // B — Номенклатура/описание, C — Артикул, D — Місце зберігання.
-  // В ячейке склада ВСЕГДА первым сохраняем артикул, затем описание.
+  // ЖЁСТКАЯ логика для текущего Excel 1С:
+  // B = описание, C = артикул.
+  // Сохраняем оба значения в ячейке в формате:
+  //   АРТИКУЛ — ОПИСАНИЕ
+  // Артикул никогда не отбрасывается, если он есть в колонке C.
   const desc=String(description ?? "").replace(/\s+/g," ").trim();
   const art=String(article ?? "").replace(/\s+/g," ").trim();
 
-  // Не теряем артикул, даже если Excel отдал его как число.
   if(art && desc) return `${art} — ${desc}`;
   if(art) return art;
   if(desc) return `БЕЗ АРТИКУЛА — ${desc}`;
