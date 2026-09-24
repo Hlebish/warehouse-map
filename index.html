@@ -376,7 +376,7 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
       Войдите через Google, чтобы открыть карту склада.
     </p>
 
-    <button onclick="loginWithGoogle()" style="
+    <button id="googleLoginBtn" type="button" style="
       width:100%;
       padding:12px 18px;
       border:0;
@@ -534,53 +534,127 @@ const firebaseConfig = {
     measurementId: "G-7GZFEYSDSJ"
 };
 
-firebase.initializeApp(firebaseConfig);
+let auth = null;
+let provider = null;
+let db = null;
+let rootRef = null;
+let firebaseReady = false;
 
+function showLoginError(message){
+  const el=document.getElementById("loginError");
+  if(!el) return;
+  el.textContent=message || "Неизвестная ошибка входа.";
+  el.style.display="block";
+}
 
-const auth = firebase.auth();
-const provider = new firebase.auth.GoogleAuthProvider();
+function setLoginBusy(busy){
+  const btn=document.getElementById("googleLoginBtn");
+  if(!btn) return;
+  btn.disabled=!!busy;
+  btn.style.opacity=busy?".65":"1";
+  btn.textContent=busy?"Открываем Google…":"Войти через Google";
+}
 
-const db=firebase.database();
- 
-const rootRef=db.ref("warehouse");
- function loginWithGoogle(){
-  const el = document.getElementById("loginError");
-  el.style.display = "none";
-  el.textContent = "";
-  if (typeof firebase === "undefined" || !auth) {
-    el.textContent = "Firebase не загрузился. Обновите страницу и попробуйте ещё раз.";
-    el.style.display = "block";
+function initFirebase(){
+  try{
+    if(typeof window.firebase === "undefined"){
+      showLoginError("Firebase не загрузился. Проверьте интернет и обновите страницу.");
+      return false;
+    }
+
+    if(!window.firebase.apps || !window.firebase.apps.length){
+      window.firebase.initializeApp(firebaseConfig);
+    }
+
+    auth=window.firebase.auth();
+    provider=new window.firebase.auth.GoogleAuthProvider();
+    db=window.firebase.database();
+    rootRef=db.ref("warehouse");
+    firebaseReady=true;
+    return true;
+  }catch(error){
+    console.error("Firebase initialization error:",error);
+    showLoginError("Ошибка запуска Firebase: "+(error?.message||"неизвестная ошибка"));
+    return false;
+  }
+}
+
+async function loginWithGoogle(){
+  const el=document.getElementById("loginError");
+  if(el){el.style.display="none";el.textContent="";}
+
+  if(!firebaseReady || !auth || !provider){
+    showLoginError("Firebase ещё не готов. Обновите страницу и попробуйте снова.");
     return;
   }
-  auth.signInWithPopup(provider).catch(error => {
-    console.error("Google login error:", error);
-    let msg = error && error.message ? error.message : "Неизвестная ошибка входа";
-    if (error && error.code === "auth/popup-blocked") msg = "Браузер заблокировал окно Google. Разрешите всплывающие окна для сайта и попробуйте снова.";
-    if (error && error.code === "auth/unauthorized-domain") msg = "Домен сайта не разрешён в Firebase Authentication → Settings → Authorized domains.";
-    if (error && error.code === "auth/popup-closed-by-user") msg = "Окно Google было закрыто до завершения входа.";
-    el.textContent = "Ошибка входа: " + msg;
-    el.style.display = "block";
+
+  setLoginBusy(true);
+  try{
+    // Сначала обычное всплывающее окно. Оно лучше работает на Android и ПК.
+    await auth.signInWithPopup(provider);
+  }catch(error){
+    console.error("Google login error:",error);
+
+    // Если браузер заблокировал popup, пробуем redirect-вход.
+    if(error?.code === "auth/popup-blocked" || error?.code === "auth/popup-cancelled-by-user"){
+      try{
+        await auth.signInWithRedirect(provider);
+        return;
+      }catch(redirectError){
+        console.error("Google redirect error:",redirectError);
+        error=redirectError;
+      }
+    }
+
+    let msg=error?.message||"Неизвестная ошибка входа.";
+    if(error?.code === "auth/unauthorized-domain"){
+      msg="Домен hlebish.github.io не разрешён в Firebase → Authentication → Settings → Authorized domains.";
+    }else if(error?.code === "auth/popup-closed-by-user"){
+      msg="Окно Google было закрыто. Нажмите кнопку ещё раз.";
+    }else if(error?.code === "auth/operation-not-allowed"){
+      msg="В Firebase не включён вход через Google.";
+    }else if(error?.code === "auth/network-request-failed"){
+      msg="Ошибка сети. Проверьте интернет-соединение.";
+    }
+    showLoginError("Ошибка входа: "+msg);
+  }finally{
+    setLoginBusy(false);
+  }
+}
+window.loginWithGoogle=loginWithGoogle;
+
+const firebaseStarted=initFirebase();
+
+// Не используем inline onclick: обработчик назначается напрямую после загрузки страницы.
+const googleLoginBtn=document.getElementById("googleLoginBtn");
+if(googleLoginBtn){
+  googleLoginBtn.addEventListener("click",loginWithGoogle);
+}
+
+if(firebaseStarted && auth){
+  auth.getRedirectResult().catch(error=>{
+    console.error("Google redirect result error:",error);
+    if(error?.code){
+      showLoginError("Ошибка входа: "+(error.message||error.code));
+    }
+  });
+
+  auth.onAuthStateChanged(user=>{
+    const loginScreen=document.getElementById("loginScreen");
+    if(user){
+      if(loginScreen) loginScreen.style.display="none";
+    }else{
+      if(loginScreen) loginScreen.style.display="flex";
+    }
+    setAccessUi();
+    initHistoryUi();
   });
 }
 
 function applyAccessMode(){
-  const editOnlyIds=["clearWarehouseBtn","saveBtn","moveBtn"];
   const editable=document.querySelectorAll("[data-edit-only]");
   editable.forEach(el=>el.style.display=canEdit()?"":"none");
 }
-
-auth.onAuthStateChanged(user => {
-  const loginScreen = document.getElementById("loginScreen");
-
-  if (user) {
-    loginScreen.style.display = "none";
-  } else {
-    loginScreen.style.display = "flex";
-  }
-
-  setAccessUi();
-  initHistoryUi();
-});
 
 const letters=["A","B","C","D","E","F","G","H","J","K"];
 const leftLetters=["A","B","C","D","E"];
@@ -639,7 +713,7 @@ function currentUserEmail(){return auth.currentUser?.email||"неизвестн�
 
 const EDITOR_EMAILS=[
   "glebur172@gmail.com",
-  "mashakashmer@gmail.com",
+  "mashakashner2002@gmail.com",
   "motroyl@gmail.com",
   "hlebish7@gmail.com"
 ];
@@ -2280,7 +2354,13 @@ function activateMapTarget(markerId){
 
 function showResultOnMap(s,l,n){
   const wrap=document.getElementById("miniMapWrap");
-  if(wrap) wrap.scrollIntoView({behavior:"smooth",block:"start"});
+  if(wrap){
+    // Прокручиваем так, чтобы вся карта оказалась ровно по центру экрана,
+    // а не прижималась к верхнему краю под sticky-header.
+    const rect=wrap.getBoundingClientRect();
+    const targetY=window.scrollY+rect.top-(window.innerHeight-rect.height)/2;
+    window.scrollTo({top:Math.max(0,targetY),behavior:"smooth"});
+  }
 
   // После окончания прокрутки ищем именно маленький индикатор этой ячейки.
   setTimeout(()=>{
