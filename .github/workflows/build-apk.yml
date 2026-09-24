@@ -118,10 +118,27 @@ jobs:
 
           npx cap add android
 
-          cat >> android/variables.gradle <<'EOF'
-          rgcfaIncludeGoogle = true
-          androidxCredentialsVersion = '1.3.0'
-          EOF
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path("android/variables.gradle")
+          text = p.read_text()
+
+          marker = "    rgcfaIncludeGoogle = true"
+          if marker not in text:
+              pos = text.rfind("}")
+              if pos == -1:
+                  raise SystemExit("ERROR: variables.gradle: closing brace not found")
+
+              text = (
+                  text[:pos]
+                  + "    rgcfaIncludeGoogle = true\n"
+                  + "    androidxCredentialsVersion = '1.3.0'\n"
+                  + text[pos:]
+              )
+
+              p.write_text(text)
+          PY
 
           npx cap sync android
           npx cap update android
