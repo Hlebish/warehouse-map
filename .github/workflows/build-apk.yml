@@ -12,20 +12,32 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # ============================================================
+      # 1. Репозиторий
+      # ============================================================
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # ============================================================
+      # 2. Node.js
+      # ============================================================
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
 
+      # ============================================================
+      # 3. Java
+      # ============================================================
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 21
 
+      # ============================================================
+      # 4. Android SDK
+      # ============================================================
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
         with:
@@ -37,6 +49,9 @@ jobs:
           yes | sdkmanager --licenses || true
           sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
+      # ============================================================
+      # 5. Восстанавливаем стабильный ключ подписи
+      # ============================================================
       - name: Restore stable debug keystore
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -52,24 +67,35 @@ jobs:
 
           echo "Stable debug keystore restored."
 
+      # ============================================================
+      # 6. Показываем SHA-1 и SHA-256
+      # ============================================================
       - name: Show SHA fingerprints
         run: |
           echo "========================================"
           echo "ANDROID DEBUG SHA-1:"
+
           keytool -list -v \
             -keystore ~/.android/debug.keystore \
             -alias androiddebugkey \
             -storepass android \
             -keypass android | grep "SHA1:"
+
           echo ""
+
           echo "ANDROID DEBUG SHA-256:"
+
           keytool -list -v \
             -keystore ~/.android/debug.keystore \
             -alias androiddebugkey \
             -storepass android \
             -keypass android | grep "SHA256:"
+
           echo "========================================"
 
+      # ============================================================
+      # 7. Создаём Capacitor-проект
+      # ============================================================
       - name: Create Capacitor project
         run: |
           mkdir -p app/www
@@ -118,7 +144,10 @@ jobs:
 
           npx cap add android
 
-          # Configure Google Services Gradle plugin
+          # ========================================================
+          # Google Services Gradle plugin
+          # ========================================================
+
           python3 - <<'PY'
           from pathlib import Path
 
@@ -161,7 +190,10 @@ jobs:
           p.write_text(text)
           PY
 
-          # Apply Google Services plugin to the app module
+          # ========================================================
+          # Google Services plugin для Android app
+          # ========================================================
+
           python3 - <<'PY'
           from pathlib import Path
 
@@ -175,7 +207,10 @@ jobs:
               p.write_text(text)
           PY
 
-          # Enable Google provider dependencies for Capacitor Firebase Authentication
+          # ========================================================
+          # Google provider для Capacitor Firebase Authentication
+          # ========================================================
+
           python3 - <<'PY'
           from pathlib import Path
 
@@ -204,10 +239,10 @@ jobs:
 
           npx cap sync android
           npx cap update android
-          echo "=== CHECK GOOGLE SERVICES RESOURCES ==="
-          find app/android/app/build/generated/res -path '*google-services*/values.xml' -print -exec cat {} \; || true
-          echo "=== END GOOGLE SERVICES CHECK ==="
 
+      # ============================================================
+      # 8. Добавляем google-services.json
+      # ============================================================
       - name: Add Firebase configuration
         env:
           FIREBASE_GOOGLE_SERVICES_JSON: ${{ secrets.FIREBASE_GOOGLE_SERVICES_JSON }}
@@ -219,12 +254,77 @@ jobs:
 
           echo "$FIREBASE_GOOGLE_SERVICES_JSON" > app/android/app/google-services.json
 
+          echo "========================================"
+          echo "GOOGLE SERVICES JSON CHECK"
+          echo "========================================"
+
+          grep -E '"project_id"|"package_name"|"client_id"' \
+            app/android/app/google-services.json || true
+
+          echo "========================================"
+
+      # ============================================================
+      # 9. Проверяем Google Services ДО основной сборки
+      #
+      # Здесь самое важное:
+      # Gradle обработает google-services.json и создаст
+      # default_web_client_id.
+      # ============================================================
+      - name: Process Google Services
+        working-directory: app/android
+        run: |
+          chmod +x gradlew
+
+          ./gradlew processDebugGoogleServices
+
+          echo ""
+          echo "========================================"
+          echo "GENERATED GOOGLE SERVICES RESOURCES"
+          echo "========================================"
+
+          find app/build/generated/res \
+            -path '*google-services*/values.xml' \
+            -print \
+            -exec cat {} \; || true
+
+          echo ""
+          echo "========================================"
+          echo "SEARCHING FOR DEFAULT WEB CLIENT ID"
+          echo "========================================"
+
+          grep -R "default_web_client_id" \
+            app/build/generated/res \
+            2>/dev/null || true
+
+          echo ""
+          echo "========================================"
+
+      # ============================================================
+      # 10. Основная сборка APK
+      # ============================================================
       - name: Build APK
         working-directory: app/android
         run: |
           chmod +x gradlew
           ./gradlew assembleDebug
 
+      # ============================================================
+      # 11. Проверяем APK
+      # ============================================================
+      - name: Verify APK
+        run: |
+          if [ ! -f app/android/app/build/outputs/apk/debug/app-debug.apk ]; then
+            echo "ERROR: APK was not created."
+            exit 1
+          fi
+
+          echo "APK successfully created."
+
+          ls -lh app/android/app/build/outputs/apk/debug/app-debug.apk
+
+      # ============================================================
+      # 12. Подготавливаем APK
+      # ============================================================
       - name: Prepare APK
         run: |
           mkdir -p release
@@ -232,6 +332,9 @@ jobs:
           cp app/android/app/build/outputs/apk/debug/app-debug.apk \
             release/warehouse-map.apk
 
+      # ============================================================
+      # 13. Загружаем APK как Artifact
+      # ============================================================
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
