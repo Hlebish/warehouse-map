@@ -2447,34 +2447,35 @@ function openPlanCell(s,l,n){
 
 function planShelfOffset(letter, mapWidth){
   const l=String(letter||"").toUpperCase();
-  // Разводим маркеры по сторонам прохода, чтобы несколько найденных
-  // ячеек одной улицы/номера не сливались в одну жёлтую кляксу.
-  // На узких экранах уменьшаем шаг автоматически.
-  const spread=Math.max(18, Math.min(40, Number(mapWidth||0)*0.038));
-  const offsets={
-    A:-5*spread,
-    B:-3*spread,
-    C:-1*spread,
-    D: 1*spread,
-    E: 3*spread,
-    F:-3*spread,
-    G:-1*spread,
-    H: 1*spread,
-    J: 3*spread,
-    K: 5*spread
-  };
-  return offsets[l] ?? 0;
+  const w=Number(mapWidth||0);
+
+  // Геометрия плана: A–E находятся слева от прохода,
+  // F–K — справа. Метка сначала смещается к своей стороне,
+  // затем внутри этой стороны получает небольшой фиксированный сдвиг.
+  // Поэтому она никогда не "прыгает" в соседний проход и не оказывается
+  // у края карты только из-за выбранной буквы.
+  const sideGap=Math.max(8, Math.min(34, w*0.03));
+  const fineGap=Math.max(3, Math.min(10, w*0.009));
+
+  const left={A:-1.35,B:-1.15,C:-0.95,D:-0.75,E:-0.55};
+  const right={F:0.55,G:0.75,H:0.95,J:1.15,K:1.35};
+
+  const factor = left[l] ?? right[l] ?? 0;
+  if(!factor)return 0;
+
+  const fine = fineGap * (Math.abs(factor)-0.55) / 0.8;
+  const sign = factor<0 ? -1 : 1;
+  return sign*(sideGap + fine);
 }
 
 function clampPlanPosition(x,y,mapWidth,mapHeight){
-  // Желтая метка не должна вылезать за границы изображения.
   const isMobile=mapWidth<=700;
-  const halfX=isMobile ? 12 : Math.min(30, Math.max(18, mapWidth*0.03));
-  const labelH=isMobile ? 16 : 34;
+  const halfX=isMobile ? 12 : 24;
+  const labelH=isMobile ? 16 : 30;
 
   return {
     x:Math.max(halfX,Math.min(mapWidth-halfX,x)),
-    y:Math.max(0,Math.min(mapHeight-labelH,y))
+    y:Math.max(3,Math.min(mapHeight-labelH-3,y))
   };
 }
 
@@ -2507,6 +2508,8 @@ function renderMiniMap(found=[]){
   const scaleX=mapWidth/1277;
   const scaleY=mapHeight/694;
 
+  const usedPositions=new Map();
+
   for(const g of groups.values()){
     const baseX=planMap.aisleX[g.s]*scaleX;
 
@@ -2521,7 +2524,17 @@ function renderMiniMap(found=[]){
 
     // Для каждой полки даём своё небольшое горизонтальное смещение.
     const rawX=baseX + planShelfOffset(g.l,mapWidth);
-    const safe=clampPlanPosition(rawX,baseY,mapWidth,mapHeight);
+    let safe=clampPlanPosition(rawX,baseY,mapWidth,mapHeight);
+
+    // Защита от точного наложения: если два разных маркера попали
+    // в один и тот же пиксель, разводим их только по вертикали на
+    // несколько пикселей, не меняя их проход и сторону.
+    const positionKey=`${Math.round(safe.x)}-${Math.round(safe.y)}`;
+    const same=usedPositions.get(positionKey)||0;
+    if(same>0){
+      safe=clampPlanPosition(safe.x,safe.y + same*(isNaN(mapHeight)?12:(mapWidth<=700?13:20)),mapWidth,mapHeight);
+    }
+    usedPositions.set(positionKey,same+1);
 
     const marker=document.createElement("div");
     marker.className="plan-marker";
