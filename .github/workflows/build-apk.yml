@@ -31,11 +31,13 @@ jobs:
 
       - name: Install Android SDK packages
         run: |
-          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          yes | sdkmanager --licenses || true
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
       - name: Create Capacitor project
         run: |
           mkdir -p app/www
+
           cp index.html app/www/index.html
 
           if [ -f warehouse-plan.png ]; then
@@ -49,15 +51,12 @@ jobs:
             "name": "warehouse-map",
             "version": "1.0.0",
             "private": true,
-            "scripts": {
-              "build": "echo Web app ready"
-            },
             "dependencies": {
-              "@capacitor/core": "^8.5.0",
-              "@capacitor/android": "^8.5.0"
+              "@capacitor/core": "^8.5.2",
+              "@capacitor/android": "^8.5.2"
             },
             "devDependencies": {
-              "@capacitor/cli": "^8.5.0"
+              "@capacitor/cli": "^8.5.2"
             }
           }
           EOF
@@ -68,10 +67,7 @@ jobs:
           {
             "appId": "com.hlebish.warehousemap",
             "appName": "Карта склада",
-            "webDir": "www",
-            "android": {
-              "minWebViewVersion": 60
-            }
+            "webDir": "www"
           }
           EOF
 
@@ -84,11 +80,10 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug
 
-      - name: Rename APK
+      - name: Prepare APK
         run: |
           mkdir -p release
-          cp app/android/app/build/outputs/apk/debug/app-debug.apk \
-             release/warehouse-map.apk
+          cp app/android/app/build/outputs/apk/debug/app-debug.apk release/warehouse-map.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
