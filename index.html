@@ -2104,11 +2104,6 @@ async function importExcelFile(file){
       return;
     }
 
-    const imported={};
-    const skipped=[];
-    let rowCount=0;
-    let locationCount=0;
-
     // Читаем только строки после настоящих заголовков.
     // Поэтому служебные строки 1С сверху не попадают в импорт.
     const dataStart=columnMap.headerRow>=0 ? columnMap.headerRow+1 : 0;
