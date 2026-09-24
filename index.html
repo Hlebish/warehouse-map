@@ -1851,15 +1851,32 @@ function excelCellText(value){
 function findExcelColumns(row,columnMap){
   const cells=(row||[]).map(excelCellText);
 
-  const descIndex=columnMap?.description ?? (cells.length===3 ? 0 : 1);
-  const articleIndex=columnMap?.article ?? (cells.length===3 ? 1 : 2);
-  const locationIndex=columnMap?.location ?? (cells.length===3 ? 2 : 3);
+  // Основной формат Excel из 1С:
+  // 1-й столбец — описание детали/модель,
+  // 2-й — артикул,
+  // 3-й — адрес хранения.
+  // Если заголовки распознаны, используем их; иначе — именно эту схему.
+  const hasExplicitMap = columnMap && (columnMap.description>=0 || columnMap.article>=0 || columnMap.location>=0);
+  const descIndex = columnMap?.description>=0 ? columnMap.description : (cells.length>=3 ? 0 : -1);
+  const articleIndex = columnMap?.article>=0 ? columnMap.article : (cells.length>=3 ? 1 : 0);
+  const locationIndex = columnMap?.location>=0 ? columnMap.location : (cells.length>=3 ? 2 : 1);
 
   return {
-    description: cells[descIndex]||"",
-    article: cells[articleIndex]||"",
-    location: cells[locationIndex]||""
+    description: descIndex>=0 ? (cells[descIndex]||"") : "",
+    article: articleIndex>=0 ? (cells[articleIndex]||"") : "",
+    location: locationIndex>=0 ? (cells[locationIndex]||"") : ""
   };
+}
+
+function makeImportedCellContent(description, article){
+  const desc=String(description||"").replace(/\s+/g," ").trim();
+  const art=String(article||"").replace(/\s+/g," ").trim();
+
+  // В ячейку обязательно сохраняем и артикул, и информацию из первого
+  // столбца Excel. Это позволяет искать не только по коду, но и по
+  // названию детали/модели автомобиля.
+  if(art && desc)return `${art} — ${desc}`;
+  return art || desc;
 }
 
 let excelModalCloseHandler=null;
@@ -2115,9 +2132,7 @@ async function importExcelFile(file){
         continue;
       }
 
-      const content=description
-        ? `${article} — ${description}`
-        : article;
+      const content=makeImportedCellContent(description,article);
 
       for(const addr of locations){
         if(!imported[addr])imported[addr]=[];
