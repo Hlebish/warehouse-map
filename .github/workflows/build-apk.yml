@@ -37,7 +37,7 @@ jobs:
           yes | sdkmanager --licenses || true
           sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
-           - name: Restore stable debug keystore
+      - name: Restore stable debug keystore
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
