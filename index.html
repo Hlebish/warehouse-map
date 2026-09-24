@@ -1926,14 +1926,17 @@ function detectExcelColumns(rows){
 }
 
 function makeImportedCellContent(description, article){
-  const desc=String(description||"").replace(/\s+/g," ").trim();
-  const art=String(article||"").replace(/\s+/g," ").trim();
+  // Excel из 1С: A — пустая служебная колонка,
+  // B — Номенклатура/описание, C — Артикул, D — Місце зберігання.
+  // В ячейке склада ВСЕГДА первым сохраняем артикул, затем описание.
+  const desc=String(description ?? "").replace(/\s+/g," ").trim();
+  const art=String(article ?? "").replace(/\s+/g," ").trim();
 
-  // В ячейку обязательно сохраняем и артикул, и информацию из первого
-  // столбца Excel. Это позволяет искать не только по коду, но и по
-  // названию детали/модели автомобиля.
-  if(art && desc)return `${art} — ${desc}`;
-  return art || desc;
+  // Не теряем артикул, даже если Excel отдал его как число.
+  if(art && desc) return `${art} — ${desc}`;
+  if(art) return art;
+  if(desc) return `БЕЗ АРТИКУЛА — ${desc}`;
+  return "";
 }
 
 let excelModalCloseHandler=null;
@@ -2152,6 +2155,10 @@ async function importExcelFile(file){
       }
 
       const content=makeImportedCellContent(description,article);
+      if(!content){
+        skipped.push({row:i+1,reason:"пустые артикул и описание"});
+        continue;
+      }
 
       for(const addr of locations){
         if(!imported[addr])imported[addr]=[];
