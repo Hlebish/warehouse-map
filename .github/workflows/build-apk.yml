@@ -204,6 +204,9 @@ jobs:
 
           npx cap sync android
           npx cap update android
+          echo "=== CHECK GOOGLE SERVICES RESOURCES ==="
+          find app/android/app/build/generated/res -path '*google-services*/values.xml' -print -exec cat {} \; || true
+          echo "=== END GOOGLE SERVICES CHECK ==="
 
       - name: Add Firebase configuration
         env:
