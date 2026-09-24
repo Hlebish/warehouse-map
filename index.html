@@ -2563,20 +2563,30 @@ function planShelfOffset(letter, mapWidth){
   const l=String(letter||"").toUpperCase();
   const w=Number(mapWidth||0);
 
-  // ВАЖНО: все буквы одной стороны должны лежать строго на одной
-  // вертикальной линии прохода. Никаких смещений A→E/F→K.
-  // Так маркеры повторяют реальную линию стеллажа на плане.
+  // Маркеры находятся внутри серого прохода, а не на бежевом стеллаже.
+  // Левая и правая стороны получают две узкие дорожки внутри прохода.
   const scale=Math.max(0.78,Math.min(1.08,w/1050));
-  const leftSide=-20;
-  const rightSide=20;
-  const px=("ABCDE".includes(l) ? leftSide : ("FGHJK".includes(l) ? rightSide : 0))*scale;
-  return px;
+  const lane=("ABCDE".includes(l) ? -9 : ("FGHJK".includes(l) ? 9 : 0))*scale;
+  return lane;
 }
 
 function planShelfYOffset(letter,mapHeight){
-  // Маркер должен находиться РОВНО на высоте соответствующей
-  // бежевой ячейки. Поэтому вертикального смещения по букве нет.
-  return 0;
+  const l=String(letter||"").toUpperCase();
+  const h=Number(mapHeight||694);
+  const scale=Math.max(0.78,Math.min(1.08,h/694));
+
+  // Несколько полок одной стороны имеют одну базовую координату по ячейке.
+  // Разводим их немного по вертикали внутри серого прохода,
+  // чтобы A/B/C/D/E и F/G/H/J/K не накладывались друг на друга.
+  const leftLetters="ABCDE";
+  const rightLetters="FGHJK";
+  const letters=leftLetters.includes(l) ? leftLetters
+    : (rightLetters.includes(l) ? rightLetters : "");
+  if(!letters)return 0;
+
+  const index=letters.indexOf(l);
+  const step=(h<=430 ? 9 : 16)*scale;
+  return (index-2)*step;
 }
 
 function clampPlanPosition(x,y,mapWidth,mapHeight){
@@ -2645,7 +2655,7 @@ function renderMiniMap(found=[]){
     if(same>0){
       safe=clampPlanPosition(
         safe.x,
-        safe.y + same*(mapWidth<=700?10:14),
+        safe.y + same*(mapWidth<=700?12:18),
         mapWidth,
         mapHeight
       );
