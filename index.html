@@ -2655,11 +2655,33 @@ function doSearch(){
   renderMiniMap(found);
 }
 
-document.getElementById("search").addEventListener("input",()=>{
+const searchInput = document.getElementById("search");
+
+// При появлении/изменении результатов не даём браузеру автоматически
+// прыгать по странице: строка поиска остаётся на том же месте экрана.
+// Ручная прокрутка пользователя при этом не блокируется.
+searchInput.addEventListener("input",()=>{
+  const anchorTop = searchInput.getBoundingClientRect().top;
+
   // Поиск работает только по уже загруженному в память data.
   // Firebase write/read здесь вообще не вызывается.
   render();
   doSearch();
+
+  const restoreSearchPosition = ()=>{
+    const currentTop = searchInput.getBoundingClientRect().top;
+    const delta = currentTop - anchorTop;
+    if(Math.abs(delta) > 0.5){
+      window.scrollBy(0, delta);
+    }
+  };
+
+  // DOM обновляется синхронно, но браузер может применить scroll anchoring
+  // уже на следующем кадре — поэтому восстанавливаем позицию дважды.
+  requestAnimationFrame(()=>{
+    restoreSearchPosition();
+    requestAnimationFrame(restoreSearchPosition);
+  });
 });
 
 rootRef.on("value",async snap=>{
