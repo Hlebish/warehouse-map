@@ -1901,6 +1901,8 @@ function exportExcel(){
     const rows=[];
     const metaRows=[];
 
+    // Главный экспорт: одна деталь = одна строка.
+    // Колонка 1 — только артикул, колонка 2 — адрес хранения.
     for(let s=1;s<=5;s++){
       const ls=s===1?leftLetters:letters;
       for(const l of ls){
@@ -1911,18 +1913,18 @@ function exportExcel(){
 
           for(const line of linesOf(value)){
             const parsed=splitExportLine(line);
-            const meta=metaFor(addr,line);
+            const article=String(parsed.article||line||"").trim();
+            if(!article)continue;
+
             rows.push({
-              "Описание":parsed.description,
-              "Артикул":parsed.article,
-              "Ячейка":addr,
-              "Добавлено":meta.addedAt?formatDate(meta.addedAt):"",
-              "Изменено":meta.updatedAt?formatDate(meta.updatedAt):""
+              "Артикул":article,
+              "Адрес хранения":addr
             });
 
+            const meta=metaFor(addr,line);
             metaRows.push({
-              "Ячейка":addr,
-              "Артикул / запись":line,
+              "Артикул":article,
+              "Адрес хранения":addr,
               "Добавлено":meta.addedAt?formatDate(meta.addedAt):"",
               "Изменено":meta.updatedAt?formatDate(meta.updatedAt):""
             });
@@ -1948,20 +1950,25 @@ function exportExcel(){
 
     const workbook=XLSX.utils.book_new();
 
-    // Главный лист специально совместим с текущим импортом Excel:
-    // Описание | Артикул | Ячейка.
-    const warehouseSheet=XLSX.utils.json_to_sheet(rows);
+    // Главный лист: именно два нужных столбца.
+    // Такой формат можно сразу использовать для просмотра/обработки:
+    // каждая строка = один артикул + его адрес.
+    const warehouseSheet=XLSX.utils.json_to_sheet(rows,{
+      header:["Артикул","Адрес хранения"]
+    });
     XLSX.utils.book_append_sheet(workbook,warehouseSheet,"Склад");
 
     const specialSheet=XLSX.utils.json_to_sheet(specialRows);
     XLSX.utils.book_append_sheet(workbook,specialSheet,"Спец. хранение");
 
     if(metaRows.length){
-      const metaSheet=XLSX.utils.json_to_sheet(metaRows);
+      const metaSheet=XLSX.utils.json_to_sheet(metaRows,{
+        header:["Артикул","Адрес хранения","Добавлено","Изменено"]
+      });
       XLSX.utils.book_append_sheet(workbook,metaSheet,"Метаданные");
     }
 
-    // Немного удобнее читаемость столбцов при открытии файла.
+    // Удобная ширина столбцов.
     for(const sheetName of workbook.SheetNames){
       const sheet=workbook.Sheets[sheetName];
       const range=XLSX.utils.decode_range(sheet["!ref"]||"A1");
@@ -1982,7 +1989,7 @@ function exportExcel(){
     const fileName=`склад_экспорт_${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(d.getMinutes())}.xlsx`;
 
     XLSX.writeFile(workbook,fileName);
-    setSync(`📤 Excel экспортирован · ${rows.length} записей` ,"ok");
+    setSync(`📤 Excel экспортирован · ${rows.length} артикулов` ,"ok");
   }catch(e){
     console.error("Ошибка экспорта Excel:",e);
     setSync("⚠️ Ошибка экспорта Excel","err");
