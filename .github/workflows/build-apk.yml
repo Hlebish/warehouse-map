@@ -118,6 +118,64 @@ jobs:
 
           npx cap add android
 
+          # Configure Google Services Gradle plugin
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path("android/build.gradle")
+          text = p.read_text()
+
+          old_marker = "com.google.gms:google-services:"
+          new_line = "        classpath 'com.google.gms:google-services:4.5.0'"
+
+          lines = text.splitlines()
+
+          found = False
+
+          for i, line in enumerate(lines):
+              if old_marker in line:
+                  lines[i] = new_line
+                  found = True
+                  break
+
+          if not found:
+              needle = "dependencies {"
+              pos = text.find(needle)
+
+              if pos == -1:
+                  raise SystemExit(
+                      "ERROR: android/build.gradle: dependencies block not found"
+                  )
+
+              insert_pos = pos + len(needle)
+
+              text = (
+                  text[:insert_pos]
+                  + "\n\n"
+                  + new_line
+                  + text[insert_pos:]
+              )
+          else:
+              text = "\n".join(lines) + "\n"
+
+          p.write_text(text)
+          PY
+
+          # Apply Google Services plugin to the app module
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path("android/app/build.gradle")
+          text = p.read_text()
+
+          marker = "apply plugin: 'com.google.gms.google-services'"
+
+          if marker not in text:
+              text += "\n\n" + marker + "\n"
+              p.write_text(text)
+          PY
+
+          # Enable Google provider dependencies for Capacitor Firebase Authentication
           python3 - <<'PY'
           from pathlib import Path
 
@@ -125,10 +183,14 @@ jobs:
           text = p.read_text()
 
           marker = "    rgcfaIncludeGoogle = true"
+
           if marker not in text:
               pos = text.rfind("}")
+
               if pos == -1:
-                  raise SystemExit("ERROR: variables.gradle: closing brace not found")
+                  raise SystemExit(
+                      "ERROR: variables.gradle: closing brace not found"
+                  )
 
               text = (
                   text[:pos]
@@ -163,6 +225,7 @@ jobs:
       - name: Prepare APK
         run: |
           mkdir -p release
+
           cp app/android/app/build/outputs/apk/debug/app-debug.apk \
             release/warehouse-map.apk
 
