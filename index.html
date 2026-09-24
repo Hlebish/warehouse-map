@@ -529,6 +529,10 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script>
 const firebaseConfig = {
     apiKey: "AIzaSyAFd_IPlACJlpxeGsNE7Iq3dQm-VYu5Ba4",
@@ -546,6 +550,7 @@ let provider = null;
 let db = null;
 let rootRef = null;
 let firebaseReady = false;
+let nativeFirebaseAuth = null;
 
 function showLoginError(message){
   const el=document.getElementById("loginError");
@@ -560,6 +565,22 @@ function setLoginBusy(busy){
   btn.disabled=!!busy;
   btn.style.opacity=busy?".65":"1";
   btn.textContent=busy?"Открываем Google…":"Войти через Google";
+}
+
+function isCapacitorApp(){
+  return !!(window.Capacitor && (
+    window.Capacitor.isNativePlatform?.() ||
+    window.Capacitor.getPlatform?.() === "android"
+  ));
+}
+
+function getNativeFirebaseAuth(){
+  try{
+    return window.Capacitor?.Plugins?.FirebaseAuthentication || null;
+  }catch(e){
+    console.warn("Не удалось получить FirebaseAuthentication plugin:",e);
+    return null;
+  }
 }
 
 function initFirebase(){
@@ -577,6 +598,7 @@ function initFirebase(){
     provider=new window.firebase.auth.GoogleAuthProvider();
     db=window.firebase.database();
     rootRef=db.ref("warehouse");
+    nativeFirebaseAuth=getNativeFirebaseAuth();
     firebaseReady=true;
     return true;
   }catch(error){
@@ -599,56 +621,82 @@ async function loginWithGoogle(){
   }
 
   setLoginBusy(true);
+
   try{
-    // Сначала обычное всплывающее окно. Оно лучше работает на Android и ПК.
+    if(isCapacitorApp()){
+      const plugin=nativeFirebaseAuth || getNativeFirebaseAuth();
+
+      if(!plugin || typeof plugin.signInWithGoogle!=="function"){
+        throw new Error("Нативный Firebase Authentication plugin не подключён к APK.");
+      }
+
+      /*
+       * Android: настоящий нативный Google Sign-In.
+       * skipNativeAuth=true нужен, чтобы после получения Google ID token
+       * мы авторизовали именно Firebase Web SDK, которым уже пользуется
+       * карта склада и Realtime Database.
+       */
+      const result=await plugin.signInWithGoogle({
+        skipNativeAuth:true,
+        useCredentialManager:true
+      });
+
+      const idToken=result?.credential?.idToken;
+      if(!idToken){
+        throw new Error("Google не вернул ID token.");
+      }
+
+      const credential=window.firebase.auth.GoogleAuthProvider.credential(idToken);
+      await auth.signInWithCredential(credential);
+
+      console.log("Native Google login successful:",auth.currentUser?.email||"user");
+      return;
+    }
+
+    // Обычный GitHub Pages / браузер: используем popup.
     await auth.signInWithPopup(provider);
+
   }catch(error){
     console.error("Google login error:",error);
 
-    // Если браузер заблокировал popup, пробуем redirect-вход.
-    if(error?.code === "auth/popup-blocked" || error?.code === "auth/popup-cancelled-by-user"){
-      try{
-        await auth.signInWithRedirect(provider);
-        return;
-      }catch(redirectError){
-        console.error("Google redirect error:",redirectError);
-        error=redirectError;
-      }
-    }
-
     let msg=error?.message||"Неизвестная ошибка входа.";
+
     if(error?.code === "auth/unauthorized-domain"){
-      msg="Домен hlebish.github.io не разрешён в Firebase → Authentication → Settings → Authorized domains.";
+      msg="Домен сайта не разрешён в Firebase → Authentication → Settings → Authorized domains.";
+    }else if(error?.code === "auth/popup-blocked"){
+      msg="Браузер заблокировал окно Google. Разрешите всплывающие окна и попробуйте снова.";
     }else if(error?.code === "auth/popup-closed-by-user"){
       msg="Окно Google было закрыто. Нажмите кнопку ещё раз.";
     }else if(error?.code === "auth/operation-not-allowed"){
       msg="В Firebase не включён вход через Google.";
     }else if(error?.code === "auth/network-request-failed"){
       msg="Ошибка сети. Проверьте интернет-соединение.";
+    }else if(error?.code === "auth/credential-already-in-use"){
+      msg="Эта учётная запись Google уже используется.";
+    }else if(error?.message?.includes("DEVELOPER_ERROR") || error?.message?.includes("10")){
+      msg="Ошибка настройки Google Sign-In. Проверьте Android-приложение в Firebase и SHA-1/SHA-256 сертификата.";
     }
+
     showLoginError("Ошибка входа: "+msg);
   }finally{
     setLoginBusy(false);
   }
 }
+
 window.loginWithGoogle=loginWithGoogle;
 
 const firebaseStarted=initFirebase();
 
-// Не используем inline onclick: обработчик назначается напрямую после загрузки страницы.
 const googleLoginBtn=document.getElementById("googleLoginBtn");
 if(googleLoginBtn){
   googleLoginBtn.onclick=loginWithGoogle;
 }
 
 if(firebaseStarted && auth){
-  auth.getRedirectResult().catch(error=>{
-    console.error("Google redirect result error:",error);
-    if(error?.code){
-      showLoginError("Ошибка входа: "+(error.message||error.code));
-    }
-  });
-
+  /*
+   * Для Android native sign-in состояние уже передаётся в Firebase Web SDK
+   * через signInWithCredential(), поэтому getRedirectResult() здесь НЕ нужен.
+   */
   auth.onAuthStateChanged(user=>{
     const loginScreen=document.getElementById("loginScreen");
     if(user){
@@ -659,11 +707,6 @@ if(firebaseStarted && auth){
     setAccessUi();
     initHistoryUi();
   });
-}
-
-function applyAccessMode(){
-  const editable=document.querySelectorAll("[data-edit-only]");
-  editable.forEach(el=>el.style.display=canEdit()?"":"none");
 }
 
 const letters=["A","B","C","D","E","F","G","H","J","K"];
