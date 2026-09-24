@@ -638,7 +638,7 @@ async function loginWithGoogle(){
        */
       const result=await plugin.signInWithGoogle({
         skipNativeAuth:true,
-        useCredentialManager:true
+        useCredentialManager:false
       });
 
       const idToken=result?.credential?.idToken;
