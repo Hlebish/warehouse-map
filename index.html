@@ -174,10 +174,7 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
 .history-entry .history-move{font-weight:700;color:#1f6feb}.history-entry .history-add{color:#2e6b3b;font-weight:700}.history-entry .history-remove{color:#b42318;font-weight:700}
 #historyModal{position:fixed;inset:0;background:#0007;display:none;align-items:center;justify-content:center;padding:16px;z-index:10020}
 #historyModal .dialog{width:min(760px,100%);max-height:calc(100vh - 32px);overflow:auto}
- .history-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
-.history-head h2{margin:0}
-.history-close{flex:0 0 auto;width:40px;height:40px;padding:0;border:1px solid var(--border);border-radius:10px;background:var(--card);color:var(--ink);font-size:28px;line-height:1;display:flex;align-items:center;justify-content:center}
-.history-close:hover{background:#f1f3f5}
+.history-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}.history-head h2{margin:0}.history-close{flex:0 0 auto;width:40px;height:40px;padding:0;border:1px solid var(--border);border-radius:10px;background:var(--card);color:var(--ink);font-size:28px;line-height:1;display:flex;align-items:center;justify-content:center}.history-close:hover{background:#f1f3f5}
 .history-toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
 .history-toolbar input,.history-toolbar select{flex:1 1 180px}
 
@@ -369,6 +366,9 @@ body.dark input,body.dark button,body.dark textarea,body.dark .dialog,body.dark 
 body.dark .shelf{background:#151c22;border-color:#46535f}
 body.dark .shelf-title{background:#222c35;color:#edf2f7}
 body.dark .item-meta,body.dark .search-result-map-btn{background:#202a33;color:var(--ink);border-color:#46535f}
+body.dark .search-result-info .article,body.dark .result .article{color:#edf2f7!important}
+body.dark .search-result-row .article{color:#edf2f7!important}
+body.dark .search-result-info strong,body.dark .result strong{color:#58a6ff}
 .bottom-nav{display:none}
 @media(max-width:700px){
   body{padding-bottom:calc(66px + env(safe-area-inset-bottom))}
@@ -410,7 +410,7 @@ body.dark .item-meta,body.dark .search-result-map-btn{background:#202a33;color:v
       Войдите через Google, чтобы открыть карту склада.
     </p>
 
-    <button id="googleLoginBtn" type="button" onclick="window.loginWithGoogle ? window.loginWithGoogle() : (document.getElementById('loginError').textContent='Скрипт входа ещё не загрузился. Обновите страницу.',document.getElementById('loginError').style.display='block')" style="
+    <button id="googleLoginBtn" type="button" onclick="window.startGoogleLogin ? window.startGoogleLogin() : void 0" style="
       width:100%;
       padding:12px 18px;
       border:0;
@@ -423,6 +423,21 @@ body.dark .item-meta,body.dark .search-result-map-btn{background:#202a33;color:v
     ">
       Войти через Google
     </button>
+
+    <script>
+    window.startGoogleLogin=async function(){
+      const btn=document.getElementById("googleLoginBtn");
+      const err=document.getElementById("loginError");
+      if(err){err.style.display="none";err.textContent="";}
+      for(let i=0;i<50;i++){
+        if(typeof window.loginWithGoogle === "function") return window.loginWithGoogle();
+        if(btn){btn.disabled=true;btn.style.opacity=".65";btn.textContent="Подготавливаем вход…";}
+        await new Promise(r=>setTimeout(r,100));
+      }
+      if(btn){btn.disabled=false;btn.style.opacity="1";btn.textContent="Войти через Google";}
+      if(err){err.textContent="Не удалось загрузить модуль входа. Перезапустите приложение и попробуйте ещё раз.";err.style.display="block";}
+    };
+    </script>
 
     <div id="loginError" style="
       color:#ff6b6b;
@@ -537,10 +552,7 @@ body.dark .item-meta,body.dark .search-result-map-btn{background:#202a33;color:v
 </div></div>
 
 <div id="historyModal"><div class="dialog">
-<div class="history-head">
-  <h2>🕘 Подробная история склада</h2>
-  <button class="history-close" type="button" aria-label="Закрыть историю" onclick="closeHistory()">×</button>
-</div>
+<div class="history-head"><h2>🕘 Подробная история склада</h2><button class="history-close" type="button" aria-label="Закрыть историю" onclick="closeHistory()">×</button></div>
 <div class="history-toolbar">
   <input id="historySearch" type="text" placeholder="Артикул или ячейка…">
   <select id="historyType">
@@ -689,6 +701,7 @@ async function loginWithGoogle(){
   }
 }
 window.loginWithGoogle=loginWithGoogle;
+window.startGoogleLogin=loginWithGoogle;
 
 function haptic(duration){
   try{if("vibrate" in navigator)navigator.vibrate(duration||9)}catch(e){}
@@ -714,13 +727,46 @@ function focusAppSearch(){
   }
 }
 function scrollToMap(){
-  const x=document.getElementById("miniMapWrap");
-  if(x)x.scrollIntoView({behavior:"smooth",block:"start"});
+  const wrap=document.getElementById("miniMapWrap");
+  if(!wrap)return;
+
+  // При нажатии «Карта» центрируем именно изображение плана
+  // по центру видимой области экрана.
+  const image=wrap.querySelector(".warehouse-plan");
+  const target=image || wrap;
+  const rect=target.getBoundingClientRect();
+  const targetTop=window.scrollY + rect.top + rect.height/2 - window.innerHeight/2;
+  const maxScroll=Math.max(0,document.documentElement.scrollHeight-window.innerHeight);
+
+  window.scrollTo({
+    top:Math.max(0,Math.min(maxScroll,targetTop)),
+    behavior:"smooth"
+  });
 }
 function scrollToWarehouseCells(){
   const x=document.getElementById("map");
   if(x)x.scrollIntoView({behavior:"smooth",block:"start"});
 }
+
+// Enter в поиске подтверждает запрос и переносит к карте склада.
+(function setupSearchEnter(){
+  const searchInput=document.getElementById("search");
+  if(!searchInput)return;
+  searchInput.addEventListener("keydown",e=>{
+    if(e.key!=="Enter")return;
+    const query=searchInput.value.trim();
+    if(!query)return;
+    e.preventDefault();
+
+    // Один раз перерисовываем ячейки с учётом нового запроса,
+    // затем строим результаты и маркеры карты.
+    render();
+    doSearch();
+
+    setTimeout(()=>scrollToMap(),50);
+  });
+})();
+
 function toggleDarkTheme(){
   const dark=!document.body.classList.contains("dark");
   document.body.classList.toggle("dark",dark);
@@ -2620,10 +2666,13 @@ async function importExcelFile(file){
     return false;
   };
 
-  // Keep one history guard entry so the phone/browser Back button closes a popup first.
-  let guardActive=true;
-  try{ history.pushState({warehousePopupGuard:true},"",location.href); }
-  catch(e){ guardActive=false; }
+  // Keep a permanent guard entry. On Android, Back first pops this entry,
+  // popstate closes the visible popup, then restores the guard entry.
+  let guardActive=false;
+  try{
+    history.pushState({warehousePopupGuard:true},"",location.href);
+    guardActive=true;
+  }catch(e){ console.warn("History guard unavailable:",e); }
 
   document.addEventListener("keydown",e=>{
     if(e.key!=="Escape")return;
@@ -2639,23 +2688,28 @@ async function importExcelFile(file){
     }
   });
 
-  // Native Android Back: Capacitor may not send it through browser popstate.
-  try{
-    const AppPlugin=window.Capacitor?.Plugins?.App;
-    if(AppPlugin?.addListener){
+  // Capacitor's App plugin is the reliable native Android Back hook.
+  // The APK workflow must include @capacitor/app for this listener to exist.
+  const attachNativeBack=()=>{
+    try{
+      const AppPlugin=window.Capacitor?.Plugins?.App;
+      if(!AppPlugin?.addListener)return false;
       AppPlugin.addListener("backButton", ({canGoBack}={})=>{
-        if(closeTopPopup()) return;
+        if(closeTopPopup())return;
         if(canGoBack){
-          try{ window.history.back(); }catch(e){}
+          try{window.history.back();}catch(e){}
           return;
         }
-        if(AppPlugin.exitApp){
-          try{ AppPlugin.exitApp(); }catch(e){}
-        }
+        if(AppPlugin.exitApp){try{AppPlugin.exitApp();}catch(e){}}
       });
+      return true;
+    }catch(e){
+      console.warn("Native Android Back handler unavailable:",e);
+      return false;
     }
-  }catch(e){
-    console.warn("Native Android Back handler unavailable:",e);
+  };
+  if(!attachNativeBack()){
+    window.addEventListener("load",attachNativeBack,{once:true});
   }
 })();
 
@@ -2919,6 +2973,24 @@ function showResultOnMap(s,l,n){
   },750);
 }
 
+function updateSearchHighlights(found){
+  const cells=document.querySelectorAll("#map .cell");
+  cells.forEach(c=>c.classList.remove("search-hit"));
+  if(!found || !found.length)return;
+
+  const wanted=new Set();
+  for(const x of found){
+    if(x.special || !x.s || !x.l || !x.n)continue;
+    wanted.add(`${x.s}-${x.l}-${x.n}`);
+  }
+  if(!wanted.size)return;
+
+  for(const c of cells){
+    const a=c.dataset.address;
+    if(a && wanted.has(a)) c.classList.add("search-hit");
+  }
+}
+
 function doSearch(){
   const raw=document.getElementById("search").value.trim();
   const out=document.getElementById("results");
@@ -3006,36 +3078,21 @@ function doSearch(){
          </div>`
     ).join("");
 
+  updateSearchHighlights(found);
   renderMiniMap(found);
 }
 
 const searchInput = document.getElementById("search");
 
-// При появлении/изменении результатов не даём браузеру автоматически
-// прыгать по странице: строка поиска остаётся на том же месте экрана.
-// Ручная прокрутка пользователя при этом не блокируется.
+// ВАЖНО: не запускаем тяжёлый поиск на каждую букву.
+// Поиск подтверждается Enter — один полный проход по складу и
+// перерисовка ячеек выполняются только после подтверждения запроса.
+// Это заметно уменьшает лаги на телефоне и не меняет саму логику поиска.
 searchInput.addEventListener("input",()=>{
-  const anchorTop = searchInput.getBoundingClientRect().top;
-
-  // Поиск работает только по уже загруженному в память data.
-  // Firebase write/read здесь вообще не вызывается.
-  render();
-  doSearch();
-
-  const restoreSearchPosition = ()=>{
-    const currentTop = searchInput.getBoundingClientRect().top;
-    const delta = currentTop - anchorTop;
-    if(Math.abs(delta) > 0.5){
-      window.scrollBy(0, delta);
-    }
-  };
-
-  // DOM обновляется синхронно, но браузер может применить scroll anchoring
-  // уже на следующем кадре — поэтому восстанавливаем позицию дважды.
-  requestAnimationFrame(()=>{
-    restoreSearchPosition();
-    requestAnimationFrame(restoreSearchPosition);
-  });
+  if(!searchInput.value.trim()){
+    document.getElementById("results").innerHTML="";
+    renderMiniMap([]);
+  }
 });
 
 rootRef.on("value",async snap=>{
