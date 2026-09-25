@@ -298,62 +298,63 @@ jobs:
 
           echo ""
           echo "========================================"
+          echo ""
+          echo "========================================"
 
       # ============================================================
       # 10. Основная сборка APK
       # ============================================================
-  - name: Build APK
-  working-directory: app/android
-  run: |
-    chmod +x gradlew
-    ./gradlew assembleDebug
+      - name: Build APK
+        working-directory: app/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
 
-    echo ""
-    echo "========================================"
-    echo "SIGNING APK WITH STABLE KEY"
-    echo "========================================"
+          echo ""
+          echo "========================================"
+          echo "SIGNING APK WITH STABLE KEY"
+          echo "========================================"
 
-    "$ANDROID_HOME/build-tools/35.0.0/apksigner" sign \
-      --ks ~/.android/debug.keystore \
-      --ks-key-alias androiddebugkey \
-      --ks-pass pass:android \
-      --key-pass pass:android \
-      --out app/build/outputs/apk/debug/warehouse-map-signed.apk \
-      app/build/outputs/apk/debug/app-debug.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" sign \
+            --ks ~/.android/debug.keystore \
+            --ks-key-alias androiddebugkey \
+            --ks-pass pass:android \
+            --key-pass pass:android \
+            --out app/build/outputs/apk/debug/warehouse-map-signed.apk \
+            app/build/outputs/apk/debug/app-debug.apk
 
-    echo ""
-    echo "========================================"
-    echo "VERIFYING FINAL APK SIGNATURE"
-    echo "========================================"
+          echo ""
+          echo "========================================"
+          echo "VERIFYING FINAL APK SIGNATURE"
+          echo "========================================"
 
-    "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify \
-      --verbose \
-      app/build/outputs/apk/debug/warehouse-map-signed.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify \
+            --verbose \
+            app/build/outputs/apk/debug/warehouse-map-signed.apk
 
       # ============================================================
       # 11. Проверяем APK
       # ============================================================
       - name: Verify APK
-  run: |
-    if [ ! -f app/android/app/build/outputs/apk/debug/warehouse-map-signed.apk ]; then
-      echo "ERROR: Signed APK was not created."
-      exit 1
-    fi
+        run: |
+          if [ ! -f app/android/app/build/outputs/apk/debug/warehouse-map-signed.apk ]; then
+            echo "ERROR: Signed APK was not created."
+            exit 1
+          fi
 
-    echo "APK successfully created and signed."
+          echo "APK successfully created and signed."
 
-    ls -lh app/android/app/build/outputs/apk/debug/warehouse-map-signed.apk
+          ls -lh app/android/app/build/outputs/apk/debug/warehouse-map-signed.apk
 
       # ============================================================
       # 12. Подготавливаем APK
       # ============================================================
-     - name: Prepare APK
-  run: |
-    mkdir -p release
+      - name: Prepare APK
+        run: |
+          mkdir -p release
 
-    cp app/android/app/build/outputs/apk/debug/warehouse-map-signed.apk \
-      release/warehouse-map.apk
-
+          cp app/android/app/build/outputs/apk/debug/warehouse-map-signed.apk \
+            release/warehouse-map.apk
       # ============================================================
       # 13. Загружаем APK как Artifact
       # ============================================================
