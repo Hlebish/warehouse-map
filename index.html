@@ -2019,22 +2019,257 @@ function excelCellText(value){
 function findExcelColumns(row,columnMap){
   const cells=(row||[]).map(excelCellText);
 
-  const descIndex=columnMap?.description ?? (cells.length===3 ? 0 : 1);
-  const articleIndex=columnMap?.article ?? (cells.length===3 ? 1 : 2);
-  const locationIndex=columnMap?.location ?? (cells.length===3 ? 2 : 3);
+  // Для выгрузки 1С "кузов весь" структура фиксированная:
+  // A — пустая служебная колонка
+  // B — Номенклатура (описание детали / модель)
+  // C — Артикул
+  // D — Місце зберігання
+  // E — Количество
+  // Поэтому для такого файла используем именно B/C/D, даже если
+  // автоматическое определение заголовков вдруг ошибётся.
+  const is1CBody = cells.length >= 4 && (
+    (cells[1] && cells[2]) || (cells[3] && /\bS[1-5]\b/i.test(cells[3]))
+  );
+
+  if(is1CBody){
+    return {
+      description: cells[1]||"",
+      article: cells[2]||"",
+      location: cells[3]||""
+    };
+  }
+
+  // Универсальный fallback для других совместимых Excel.
+  const descIndex=Number.isInteger(columnMap?.description)?columnMap.description:-1;
+  const articleIndex=Number.isInteger(columnMap?.article)?columnMap.article:-1;
+  const locationIndex=Number.isInteger(columnMap?.location)?columnMap.location:-1;
 
   return {
-    description: cells[descIndex]||"",
-    article: cells[articleIndex]||"",
-    location: cells[locationIndex]||""
+    description: descIndex>=0 ? (cells[descIndex]||"") : "",
+    article: articleIndex>=0 ? (cells[articleIndex]||"") : "",
+    location: locationIndex>=0 ? (cells[locationIndex]||"") : ""
   };
+}
+
+function detectExcelColumns(rows){
+  // В выгрузке 1С служебная информация занимает первые строки,
+  // а настоящие заголовки находятся ниже. В текущем файле:
+  // B = Номенклатура, C = Артикул, D = Місце зберігання.
+  // Поэтому нельзя брать rows[0] как строку заголовков.
+  const result={description:-1,article:-1,location:-1,headerRow:-1};
+  const maxScan=Math.min(rows.length,40);
+
+  const normalizeHeader=v=>String(v??"")
+    .toLowerCase()
+    .replace(/ё/g,"е")
+    .replace(/і/g,"и")
+    .replace(/ї/g,"и")
+    .replace(/є/g,"е")
+    .replace(/\s+/g," ")
+    .trim();
+
+  for(let r=0;r<maxScan;r++){
+    const row=rows[r]||[];
+    for(let c=0;c<row.length;c++){
+      const h=normalizeHeader(row[c]);
+      if(!h)continue;
+
+      if(result.description<0 && (/^номенклатура$/.test(h)||/описан|наимен|назван/.test(h)))
+        result.description=c;
+      if(result.article<0 && (/^артикул$/.test(h)||/артикул|код/.test(h)))
+        result.article=c;
+      if(result.location<0 && (/місце зберігання|место хранения|ячейк|адрес|хранен/.test(h)))
+        result.location=c;
+    }
+
+    if(result.description>=0 && result.article>=0 && result.location>=0){
+      result.headerRow=r;
+      return result;
+    }
+  }
+
+  // Запасной вариант: ищем колонку адреса по реальным значениям,
+  // а остальные две колонки берём рядом с ней.
+  for(let c=0;c<Math.max(...rows.slice(0,Math.min(rows.length,20)).map(r=>(r||[]).length),0);c++){
+    const sample=rows.slice(0,Math.min(rows.length,20))
+      .map(r=>String(r?.[c]??"").toUpperCase())
+      .join(" ");
+    if(/\bS[1-5]\s*(?:[,;:\-]|\s)\s*[A-K]\s*\d{1,2}/i.test(sample) ||
+       /\bS[1-5]\s*[-,]/i.test(sample)){
+      result.location=c;
+      break;
+    }
+  }
+
+  if(result.location>=0){
+    result.article=result.article>=0?result.article:Math.max(0,result.location-1);
+    result.description=result.description>=0?result.description:Math.max(0,result.location-2);
+  }
+
+  return result;
+}
+
+function makeImportedCellContent(description, article){
+  // ЖЁСТКАЯ логика для текущего Excel 1С:
+  // B = описание, C = артикул.
+  // Сохраняем оба значения в ячейке в формате:
+  //   АРТИКУЛ — ОПИСАНИЕ
+  // Артикул никогда не отбрасывается, если он есть в колонке C.
+  const desc=String(description ?? "").replace(/\s+/g," ").trim();
+  const art=String(article ?? "").replace(/\s+/g," ").trim();
+
+  if(art && desc) return `${art} — ${desc}`;
+  if(art) return art;
+  if(desc) return `БЕЗ АРТИКУЛА — ${desc}`;
+  return "";
+}
+
+let excelModalCloseHandler=null;
+function showExcelModal(cfg){const m=document.getElementById("excelModal");document.getElementById("excelModalTitle").textContent=cfg.title||"Импорт Excel";document.getElementById("excelModalFile").textContent=cfg.fileName||"";document.getElementById("excelModalBody").innerHTML=cfg.body||"";document.getElementById("excelModalIcon").textContent=cfg.icon||"📥";document.getElementById("excelModalIcon").className="excel-icon "+(cfg.iconClass||"");document.getElementById("excelModalActions").innerHTML=(cfg.actions||[]).map((a,i)=>`<button type="button" class="${a.className||""}" data-excel-action="${i}">${a.label}</button>`).join("");excelModalCloseHandler=cfg.onClose||null;m.style.display="flex";m.setAttribute("aria-hidden","false");(cfg.actions||[]).forEach((a,i)=>m.querySelector(`[data-excel-action="${i}"]`)?.addEventListener("click",a.onClick));}
+function hideExcelModal(){const m=document.getElementById("excelModal");if(m){m.style.display="none";m.setAttribute("aria-hidden","true")}}
+function closeExcelModal(){const handler=excelModalCloseHandler;excelModalCloseHandler=null;hideExcelModal();if(handler)handler()}
+function excelEsc(v){return String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]))}
+function showExcelMessage(cfg){return new Promise(resolve=>showExcelModal({...cfg,onClose:()=>resolve(),actions:[{label:"Понятно",className:"excel-primary",onClick:()=>{hideExcelModal();excelModalCloseHandler=null;resolve()}}]}))}
+function askExcelImport(o){return new Promise(resolve=>{const ph=o.preview.slice(0,5).map(x=>`<div class="excel-preview-row"><strong>${excelEsc(x.address)}</strong>${excelEsc(x.value)}</div>`).join("");const sh=o.skipped.length?`<div class="excel-section"><div class="excel-section-title">⚠️ Пропущенные строки</div><div class="excel-warn">${o.skipped.slice(0,5).map(x=>`Строка ${excelEsc(x.row)} — ${excelEsc(x.reason)}`).join("<br>")}${o.skipped.length>5?`<br>…и ещё ${o.skipped.length-5}.`:""}</div></div>`:`<div class="excel-section"><div class="excel-warn" style="background:#edf9f0;border-color:#b8dfc0;color:#2e6b3b">✓ Все строки с адресами обработаны.</div></div>`;showExcelModal({title:"Проверка импорта",fileName:`📄 ${o.fileName}`,onClose:()=>resolve(false),body:`<div class="excel-stats"><div class="excel-stat"><b>${o.rowCount}</b><span>строк с данными</span></div><div class="excel-stat"><b>${o.addressCount}</b><span>ячеек</span></div><div class="excel-stat"><b>${o.locationCount}</b><span>записей</span></div></div><div class="excel-section"><div class="excel-section-title">Предпросмотр</div><div class="excel-preview">${ph}${o.addressCount>5?`<div style="padding:7px 4px;color:#66717d">…и ещё ${o.addressCount-5} ячеек</div>`:""}</div></div>${sh}<div style="margin-top:14px;font-size:13px;color:#52606d">Загрузить эти данные на карту?</div>`,actions:[{label:"Отмена",onClick:()=>{hideExcelModal();excelModalCloseHandler=null;resolve(false)}},{label:"Загрузить",className:"excel-primary",onClick:()=>{hideExcelModal();excelModalCloseHandler=null;resolve(true)}}]})})}
+
+function splitExportLine(line){
+  const text=String(line||"").trim();
+  if(!text)return {article:"",description:""};
+
+  // Формат хранения внутри ячейки: "АРТИКУЛ — Описание".
+  // Если разделителя нет, считаем всю строку артикулом.
+  const match=text.match(/^\s*(.*?)\s+—\s+(.*)\s*$/);
+  if(match){
+    return {
+      article:String(match[1]||"").trim(),
+      description:String(match[2]||"").trim()
+    };
+  }
+  return {article:text,description:""};
+}
+
+function exportExcel(){
+  if(typeof XLSX==="undefined"){
+    showExcelMessage({
+      title:"Модуль Excel не загружен",
+      icon:"⚠️",
+      iconClass:"excel-error-icon",
+      body:'<div class="excel-error">Не удалось загрузить модуль Excel. Обнови страницу и попробуй ещё раз.</div>'
+    });
+    return;
+  }
+
+  try{
+    const rows=[];
+    const metaRows=[];
+
+    // Главный экспорт: одна деталь = одна строка.
+    // Колонка 1 — только артикул, колонка 2 — адрес хранения.
+    for(let s=1;s<=5;s++){
+      const ls=s===1?leftLetters:letters;
+      for(const l of ls){
+        for(let n=1;n<=10;n++){
+          const addr=address(`S${s}`,l,n);
+          const value=String(data?.[`S${s}`]?.[l]?.[String(n)]||"").trim();
+          if(!value)continue;
+
+          for(const line of linesOf(value)){
+            const parsed=splitExportLine(line);
+            const article=String(parsed.article||line||"").trim();
+            if(!article)continue;
+
+            rows.push({
+              "Описание":String(parsed.description||"").trim(),
+              "Артикул":article,
+              "Место хранения":addr
+            });
+
+            const meta=metaFor(addr,line);
+            metaRows.push({
+              "Описание":String(parsed.description||"").trim(),
+              "Артикул":article,
+              "Место хранения":addr,
+              "Добавлено":meta.addedAt?formatDate(meta.addedAt):"",
+              "Изменено":meta.updatedAt?formatDate(meta.updatedAt):""
+            });
+          }
+        }
+      }
+    }
+
+    const specialRows=[
+      {"Раздел":"Перекупной товар","Содержимое":String(specialData?.resale||"")},
+      {"Раздел":"Брак","Содержимое":String(specialData?.defect||"")}
+    ];
+
+    if(!rows.length && !specialRows.some(x=>x["Содержимое"].trim())){
+      showExcelMessage({
+        title:"Склад пуст",
+        icon:"⚠️",
+        iconClass:"excel-error-icon",
+        body:'<div class="excel-warn">На карте сейчас нет данных для экспорта.</div>'
+      });
+      return;
+    }
+
+    const workbook=XLSX.utils.book_new();
+
+    // Главный лист: 3 отдельных столбца — описание, артикул, место хранения.
+    // Каждая строка = одна деталь в одной ячейке.
+    const warehouseSheet=XLSX.utils.json_to_sheet(rows,{
+      header:["Описание","Артикул","Место хранения"]
+    });
+    XLSX.utils.book_append_sheet(workbook,warehouseSheet,"Склад");
+
+    const specialSheet=XLSX.utils.json_to_sheet(specialRows);
+    XLSX.utils.book_append_sheet(workbook,specialSheet,"Спец. хранение");
+
+    if(metaRows.length){
+      const metaSheet=XLSX.utils.json_to_sheet(metaRows,{
+        header:["Описание","Артикул","Место хранения","Добавлено","Изменено"]
+      });
+      XLSX.utils.book_append_sheet(workbook,metaSheet,"Метаданные");
+    }
+
+    // Удобная ширина столбцов.
+    for(const sheetName of workbook.SheetNames){
+      const sheet=workbook.Sheets[sheetName];
+      const range=XLSX.utils.decode_range(sheet["!ref"]||"A1");
+      const widths=[];
+      for(let c=range.s.c;c<=range.e.c;c++){
+        let max=12;
+        for(let r=range.s.r;r<=range.e.r;r++){
+          const cell=sheet[XLSX.utils.encode_cell({r,c})];
+          max=Math.max(max,String(cell?.v??"").length);
+        }
+        widths.push({wch:Math.min(max+2,60)});
+      }
+      sheet["!cols"]=widths;
+    }
+
+    const d=new Date();
+    const pad=n=>String(n).padStart(2,"0");
+    const fileName=`склад_экспорт_${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(d.getMinutes())}.xlsx`;
+
+    XLSX.writeFile(workbook,fileName);
+    setSync(`📤 Excel экспортирован · ${rows.length} записей` ,"ok");
+  }catch(e){
+    console.error("Ошибка экспорта Excel:",e);
+    setSync("⚠️ Ошибка экспорта Excel","err");
+    showExcelMessage({
+      title:"Не удалось экспортировать Excel",
+      icon:"⚠️",
+      iconClass:"excel-error-icon",
+      body:`<div class="excel-error">${excelEsc(e?.message||e||"Неизвестная ошибка")}</div>`
+    });
+  }
 }
 
 async function importExcelFile(file){
   if(!file)return;
 
   if(typeof XLSX==="undefined"){
-    alert("Не удалось загрузить модуль Excel. Обнови страницу и попробуй ещё раз.");
+    await showExcelMessage({title:"Модуль Excel не загружен",icon:"⚠️",iconClass:"excel-error-icon",body:`<div class="excel-error">Не удалось загрузить модуль Excel. Обнови страницу и попробуй ещё раз.</div>`});
     return;
   }
 
@@ -2045,66 +2280,28 @@ async function importExcelFile(file){
     const rows=XLSX.utils.sheet_to_json(sheet,{header:1,defval:"",raw:false});
 
     if(!rows.length){
-      alert("Excel пустой.");
+      await showExcelMessage({title:"Excel пустой",icon:"⚠️",iconClass:"excel-error-icon",body:`<div class="excel-error">В выбранном файле нет данных для импорта.</div>`});
       return;
     }
 
-    // Определяем колонки по заголовкам. Текущий Excel из 1С:
-    // A = Описание, B = Артикул, C = Ячейка.
-    const headers=(rows[0]||[]).map(v=>String(v||"").trim().toLowerCase());
+    // Находим настоящую строку заголовков внутри выгрузки 1С.
+    // В этом файле данные находятся не с первой строки: сверху есть
+    // служебный текст отчёта.
+    const columnMap=detectExcelColumns(rows);
 
-    const columnMap={
-      description: headers.findIndex(h =>
-        /описан|наимен|назван/.test(h)
-      ),
-      article: headers.findIndex(h =>
-        /артикул|код/.test(h)
-      ),
-      location: headers.findIndex(h =>
-        /ячейк|адрес|место.*хран|хранен/.test(h)
-      )
-    };
-
-    // Excel из 1С может приходить вообще без заголовков.
-    // Например:
-    // A = Описание, B = Артикул, C = Ячейка, D = Количество
-    // Причём первая строка иногда полностью пустая.
-    // Поэтому определяем колонку адреса по реальным значениям, а не
-    // предполагаем, что при 4 колонках адрес находится в D.
-    const sampleRows=rows.slice(0,Math.min(rows.length,15));
-
-    if(columnMap.location<0){
-      for(let c=0;c<(rows[0]||[]).length;c++){
-        const sample=sampleRows
-          .map(r=>String(r?.[c]??"").toUpperCase())
-          .join(" ");
-        if(/\\bS[1-5]\\s*[,\-]\s*[A-K]\\s*[-,]?\\s*\\d{1,2}/i.test(sample) ||
-           /\\bS[1-5]\\b/i.test(sample)){
-          columnMap.location=c;
-          break;
-        }
-      }
+    if(columnMap.description<0 || columnMap.article<0 || columnMap.location<0){
+      await showExcelMessage({
+        title:"Не удалось определить колонки",
+        icon:"⚠️",
+        iconClass:"excel-error-icon",
+        body:`<div class="excel-error">Не удалось определить структуру Excel.<br><br>Нужны три колонки: <strong>Номенклатура</strong>, <strong>Артикул</strong> и <strong>Місце зберігання</strong>.</div>`
+      });
+      return;
     }
 
-    if(columnMap.description<0 || columnMap.article<0){
-      // Для беззаголовочного файла сначала используем типичный
-      // формат 3/4 колонок: Описание | Артикул | Ячейка | Количество.
-      const count=Math.max(...rows.map(r=>(r||[]).length),0);
-      if(count>=3){
-        if(columnMap.description<0) columnMap.description=0;
-        if(columnMap.location<0) columnMap.location=2;
-        if(columnMap.article<0){
-          columnMap.article = columnMap.location>0 ? columnMap.location-1 : 1;
-        }
-      }
-    }
-
-    // Если заголовок всё-таки распознан, его схема имеет приоритет.
-    // Если колонка артикула не определилась, берём колонку перед адресом.
-    if(columnMap.article<0 && columnMap.location>0)
-      columnMap.article=columnMap.location-1;
-    if(columnMap.description<0 && columnMap.article>0)
-      columnMap.description=columnMap.article-1;
+    // Читаем только строки после настоящих заголовков.
+    // Поэтому служебные строки 1С сверху не попадают в импорт.
+    const dataStart=columnMap.headerRow>=0 ? columnMap.headerRow+1 : 0;
 
     const imported={};
     const skipped=[];
@@ -2113,7 +2310,7 @@ async function importExcelFile(file){
 
     // Не привязываемся к первой строке: она может быть пустой или
     // содержать заголовок. findExcelColumns() пропустит пустые строки.
-    for(let i=0;i<rows.length;i++){
+    for(let i=dataStart;i<rows.length;i++){
       const row=rows[i]||[];
       const {description,article,location}=findExcelColumns(row,columnMap);
 
@@ -2143,9 +2340,11 @@ async function importExcelFile(file){
         continue;
       }
 
-      const content=description
-        ? `${article} — ${description}`
-        : article;
+      const content=makeImportedCellContent(description,article);
+      if(!content){
+        skipped.push({row:i+1,reason:"пустые артикул и описание"});
+        continue;
+      }
 
       for(const addr of locations){
         if(!imported[addr])imported[addr]=[];
@@ -2160,43 +2359,13 @@ async function importExcelFile(file){
     const addresses=Object.keys(imported);
 
     if(!addresses.length){
-      alert(
-        `Excel прочитан, но конкретных ячеек не найдено.\\n\\n`+
-        `Строк с данными: ${rowCount}\\n`+
-        `Пример ожидаемого адреса: S5, A3 или S4, F6,F7,F8.`
-      );
+      await showExcelMessage({title:"Ячейки не найдены",icon:"⚠️",iconClass:"excel-error-icon",body:`<div class="excel-error">Excel прочитан, но конкретных ячеек не найдено.<br><br>Пример ожидаемого адреса: <strong>S5, A3</strong> или <strong>S4, F6,F7,F8</strong>.</div>`});
       return;
     }
 
-    const preview=addresses.slice(0,10).map(addr=>{
-      return `${addr}\\n${imported[addr].join("\\n")}`;
-    }).join("\\n\\n");
+    const preview=addresses.slice(0,10).map(addr=>({address:addr,value:imported[addr].join(" · ")}));
 
-    const more=addresses.length>10
-      ? `\\n\\n…и ещё ${addresses.length-10} ячеек.`
-      : "";
-
-    const skippedPreview=skipped.slice(0,5).map(x=>{
-      return `строка ${x.row}: ${x.reason}`;
-    }).join("\\n");
-
-    const skippedMore=skipped.length>5
-      ? `\\n…и ещё ${skipped.length-5}.`
-      : "";
-
-    const ok=confirm(
-      `Excel: ${file.name}\\n\\n`+
-      `Строк с данными: ${rowCount}\\n`+
-      `Ячеек для заполнения: ${addresses.length}\\n`+
-      `Записей: ${locationCount}\\n`+
-      `Пропущено строк: ${skipped.length}\\n\\n`+
-      `Пример:\\n${preview}${more}`+
-      (skipped.length
-        ? `\\n\\nПропущенные строки:\\n${skippedPreview}${skippedMore}`
-        : "")+
-      `\\n\\nЗагрузить эти данные на карту?`
-    );
-
+    const ok=await askExcelImport({fileName:file.name,rowCount,addressCount:addresses.length,locationCount,preview,skipped});
     if(!ok)return;
 
     // Формируем только те ячейки, которые пришли из Excel.
@@ -2227,86 +2396,115 @@ async function importExcelFile(file){
     }
 
     if(!validAddresses.length){
-      alert("Excel распознан, но ни одного адреса карты не удалось подготовить к записи.");
+      await showExcelMessage({title:"Импорт не выполнен",icon:"⚠️",iconClass:"excel-error-icon",body:`<div class="excel-error">Excel был распознан, но ни одного адреса карты не удалось подготовить к записи.</div>`});
       return;
     }
 
     try{
-      // Excel + история записываются одним атомарным обновлением Firebase.
-      const historyKey = rootRef.child("history").push().key;
-      if(!historyKey) throw new Error("Не удалось создать ключ истории");
+      // Best-effort import: one bad record must not block the rest.
+      const failedItems=[];
+      const savedAddresses=[];
+      const cellUpdates={};
+      for(const [path,value] of Object.entries(patch)) cellUpdates[`cells/${path}`]=value;
 
-      const historyEvent = {
-        type:"import",
-        detail:`Импорт Excel: ${file.name}`,
-        fileName:file.name,
-        cellsCount:validAddresses.length,
-        itemsCount:locationCount,
-        addresses:validAddresses.slice(0,200),
-        email:currentUserEmail(),
-        timestamp:firebase.database.ServerValue.TIMESTAMP
-      };
-
-      const updates = {};
-      for(const [path,value] of Object.entries(patch)){
-        updates[`cells/${path}`]=value;
-      }
-      updates[`history/${historyKey}`]=historyEvent;
-
-      await rootRef.update(updates);
-      console.log("Импорт Excel и история сохранены:", historyKey);
-
-      // После успешной записи обновляем локальное состояние.
-      for(const addr of validAddresses){
-        const match=addr.match(/^S([1-5])-([A-K])-(\d+)$/);
-        const [,s,l,n]=match;
-        const importedValue=imported[addr].join("\n");
-        data[`S${s}`][l][n]=importedValue;
-        const ts=nowTs();
-        for(const detail of linesOf(importedValue)){
-          const key=itemKey(addr,detail);
-          if(!itemMeta[key]) itemMeta[key]={addedAt:ts,updatedAt:null};
+      // First save cells only. If the batch fails, retry one cell at a time.
+      try{
+        await rootRef.update(cellUpdates);
+        savedAddresses.push(...validAddresses);
+      }catch(bulkErr){
+        console.warn("Пакетный импорт Excel не прошёл, пробуем по ячейкам:",bulkErr);
+        for(const addr of validAddresses){
+          const match=addr.match(/^S([1-5])-([A-K])-(\d+)$/);
+          if(!match)continue;
+          const [,s,l,n]=match;
+          const value=imported[addr].join("\n");
+          try{
+            await rootRef.update({[`cells/S${s}/${l}/${n}`]:value});
+            savedAddresses.push(addr);
+          }catch(cellErr){
+            failedItems.push({address:addr,article:imported[addr].join("\n"),reason:String(cellErr?.message||cellErr||"ошибка записи")});
+          }
         }
       }
 
+      // Metadata is written separately with safe Firebase keys. Even if it fails,
+      // the successfully imported cells remain on the map.
+      let metaSaved=true, metaError="";
+      try{
+        const nextMeta=normalizeMeta(itemMeta);
+        const ts=nowTs();
+        for(const addr of savedAddresses){
+          for(const detail of linesOf(imported[addr].join("\n"))){
+            const key=itemKey(addr,detail);
+            if(!nextMeta[key]) nextMeta[key]={addedAt:ts,updatedAt:null};
+          }
+        }
+        await rootRef.child("itemMeta").set(nextMeta);
+        itemMeta=nextMeta;
+      }catch(metaErr){
+        metaSaved=false;
+        metaError=String(metaErr?.message||metaErr||"ошибка metadata");
+        console.warn("Metadata Excel не сохранены, но ячейки уже импортированы:",metaErr);
+      }
+
+      // Journal: successful cells, skipped Excel rows, and actual failed records.
+      const historyKey=rootRef.child("history").push().key;
+      if(historyKey){
+        await rootRef.child("history").child(historyKey).set({
+          type:"import",
+          detail:`Импорт Excel: ${file.name}`,
+          fileName:file.name,
+          cellsCount:savedAddresses.length,
+          itemsCount:locationCount,
+          addresses:savedAddresses.slice(0,200),
+          skippedRows:skipped.slice(0,200),
+          failedItems:failedItems.slice(0,200),
+          metadataSaved:metaSaved,
+          metadataError:metaSaved?null:metaError,
+          email:currentUserEmail(),
+          timestamp:firebase.database.ServerValue.TIMESTAMP
+        });
+      }
+
+      for(const addr of savedAddresses){
+        const match=addr.match(/^S([1-5])-([A-K])-(\d+)$/);
+        const [,s,l,n]=match;
+        data[`S${s}`][l][n]=imported[addr].join("\n");
+      }
       setLocal();
-      await rootRef.child("itemMeta").set(itemMeta);
       render();
       doSearch();
 
-      setSync(`☁️ Excel загружен: ${validAddresses.length} ячеек · история записана`,"ok");
+      const problemCount=failedItems.length+skipped.length;
+      setSync(`☁️ Excel: ${savedAddresses.length} ячеек загружено${problemCount?` · ${problemCount} проблемных строк`:""}`,problemCount?"err":"ok");
+      if(document.getElementById("historyModal")?.style.display==="flex") await openHistory();
 
-      // Если окно истории уже открыто — сразу обновляем его.
-      if(document.getElementById("historyModal")?.style.display==="flex"){
-        await openHistory();
-      }
+      const failedHtml=failedItems.length
+        ? `<div class="excel-section"><div class="excel-section-title">❌ Не удалось добавить</div><div class="excel-error">${failedItems.slice(0,20).map(x=>`<strong>${excelEsc(x.address)}</strong> — ${excelEsc(x.article)}<br><small>${excelEsc(x.reason)}</small>`).join("<br><br>")}${failedItems.length>20?`<br>…и ещё ${failedItems.length-20}.`:""}</div></div>` : "";
+      const skippedHtml=skipped.length
+        ? `<div class="excel-section"><div class="excel-section-title">⚠️ Пропущено при чтении Excel</div><div class="excel-warn">${skipped.slice(0,20).map(x=>`Строка ${excelEsc(x.row)} — ${excelEsc(x.reason)}`).join("<br>")}${skipped.length>20?`<br>…и ещё ${skipped.length-20}.`:""}</div></div>` : "";
+      const metaHtml=!metaSaved
+        ? `<div class="excel-error" style="margin-top:10px">⚠️ Ячейки сохранены, но служебные метаданные не записались. Ошибка: ${excelEsc(metaError)}</div>` : "";
 
-      alert(
-        `Готово!\\n\\n`+
-        `Загружено ячеек: ${validAddresses.length}\\n`+
-        `Записей: ${locationCount}\\n`+
-        (skipped.length
-          ? `Пропущено строк: ${skipped.length}`
-          : "Все строки с адресами обработаны.")
-      );
+      await showExcelMessage({
+        title:problemCount?"Импорт завершён с пропусками":"Импорт завершён",
+        icon:problemCount?"⚠️":"✓",
+        iconClass:problemCount?"excel-error-icon":"excel-success-icon",
+        fileName:`📄 ${file.name}`,
+        body:`<div class="excel-stats"><div class="excel-stat"><b>${savedAddresses.length}</b><span>загружено ячеек</span></div><div class="excel-stat"><b>${locationCount}</b><span>записей в Excel</span></div><div class="excel-stat"><b>${failedItems.length}</b><span>ошибок записи</span></div><div class="excel-stat"><b>${skipped.length}</b><span>пропущено строк</span></div></div>${failedHtml}${skippedHtml}${metaHtml}`
+      });
+      return;
 
     }catch(e){
       console.error("Excel import Firebase error:",e);
-
-      setSync(
-        `⚠️ Ошибка загрузки Excel: ${e?.code||"Firebase"}`,
-        "err"
-      );
-
-      alert(
-        `Excel распознан, но Firebase не разрешил записать данные.\\n\\n`+
-        `Ошибка: ${e?.code||e?.message||e}\\n\\n`+
-        `Если здесь написано PERMISSION_DENIED — проверь права записи для твоего Google-аккаунта.`
-      );
-
+      const errorCode=String(e?.code||"").trim();
+      const errorMessage=String(e?.message||e||"Неизвестная ошибка").trim();
+      const errorLabel=errorCode || "UNKNOWN_ERROR";
+      const permissionHint=errorCode==="PERMISSION_DENIED" ? `<br><br><strong>Firebase отклонил запись.</strong> Проверь, что выполнен вход владельцем и правила Realtime Database разрешают запись для этого аккаунта.` : errorCode==="UNAUTHENTICATED" ? `<br><br><strong>Пользователь не авторизован.</strong> Войди через Google и повтори импорт.` : "";
+      setSync(`⚠️ Ошибка Excel: ${errorLabel}`,"err");
+      await showExcelMessage({title:"Не удалось сохранить Excel",icon:"⚠️",iconClass:"excel-error-icon",body:`<div class="excel-error"><strong>Не удалось сохранить импорт.</strong><br><br>Код ошибки: <strong>${excelEsc(errorLabel)}</strong><br>Причина: <strong>${excelEsc(errorMessage)}</strong>${permissionHint}</div>`});
       return;
     }
-
 
     if(skipped.length){
       console.warn("Пропущенные строки Excel:",skipped);
@@ -2314,10 +2512,80 @@ async function importExcelFile(file){
 
   }catch(err){
     console.error(err);
-    alert("Ошибка чтения Excel: "+(err?.message||err));
+    await showExcelMessage({title:"Ошибка чтения Excel",icon:"⚠️",iconClass:"excel-error-icon",body:`<div class="excel-error">Не удалось прочитать файл Excel.<br><br><small>${excelEsc(err?.message||err)}</small></div>`});
   }
 }
 
+
+/* Global popup controls: ESC on PC + Android/browser Back on phones. */
+(function setupGlobalPopupClose(){
+  const popupIds=["excelModal","historyModal","modal","moveModal","specialModal"];
+  const isVisible=id=>{
+    const el=document.getElementById(id);
+    if(!el)return false;
+    const cs=getComputedStyle(el);
+    return cs.display!=="none" && cs.visibility!=="hidden" && cs.opacity!=="0";
+  };
+  const closeTopPopup=()=>{
+    if(isVisible("excelModal")){ closeExcelModal(); return true; }
+    if(isVisible("specialModal")){ closeSpecial(); return true; }
+    if(isVisible("moveModal")){ closeMoveModal(); return true; }
+    if(isVisible("modal")){ closeModal(); return true; }
+    if(isVisible("historyModal")){ closeHistory(); return true; }
+    return false;
+  };
+
+  // Keep a permanent guard entry. On Android, Back first pops this entry,
+  // popstate closes the visible popup, then restores the guard entry.
+  let guardActive=false;
+  try{
+    history.pushState({warehousePopupGuard:true},"",location.href);
+    guardActive=true;
+  }catch(e){ console.warn("History guard unavailable:",e); }
+
+  document.addEventListener("keydown",e=>{
+    if(e.key!=="Escape")return;
+    if(closeTopPopup()){
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  },true);
+
+  window.addEventListener("popstate",()=>{
+    if(closeTopPopup() && guardActive){
+      try{ history.pushState({warehousePopupGuard:true},"",location.href); }catch(e){}
+    }
+  });
+
+  // Capacitor's App plugin is the reliable native Android Back hook.
+  // The APK workflow must include @capacitor/app for this listener to exist.
+  const attachNativeBack=()=>{
+    try{
+      const AppPlugin=window.Capacitor?.Plugins?.App;
+      if(!AppPlugin?.addListener)return false;
+      AppPlugin.addListener("backButton", ({canGoBack}={})=>{
+        if(closeTopPopup())return;
+        if(canGoBack){
+          try{window.history.back();}catch(e){}
+          return;
+        }
+        if(AppPlugin.exitApp){try{AppPlugin.exitApp();}catch(e){}}
+      });
+      return true;
+    }catch(e){
+      console.warn("Native Android Back handler unavailable:",e);
+      return false;
+    }
+  };
+  if(!attachNativeBack()){
+    window.addEventListener("load",attachNativeBack,{once:true});
+  }
+})();
+
+document.addEventListener("click",e=>{
+  const t=e.target.closest("button,.cell,.search-result-row,.special-cell");
+  if(t&&!t.dataset.noHaptic)haptic(7);
+});
 document.getElementById("excelFile").addEventListener("change",async e=>{
   const file=e.target.files?.[0];
   e.target.value="";
