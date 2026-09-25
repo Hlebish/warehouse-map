@@ -366,7 +366,8 @@ body.dark input,body.dark button,body.dark textarea,body.dark .dialog,body.dark 
 body.dark .shelf{background:#151c22;border-color:#46535f}
 body.dark .shelf-title{background:#222c35;color:#edf2f7}
 body.dark .item-meta,body.dark .search-result-map-btn{background:#202a33;color:var(--ink);border-color:#46535f}
-body.dark .search-result-info .article,body.dark .result .article{color:#edf2f7}
+body.dark .search-result-info .article,body.dark .result .article{color:#edf2f7!important}
+body.dark .search-result-row .article{color:#edf2f7!important}
 body.dark .search-result-info strong,body.dark .result strong{color:#58a6ff}
 .bottom-nav{display:none}
 @media(max-width:700px){
@@ -756,7 +757,12 @@ function scrollToWarehouseCells(){
     const query=searchInput.value.trim();
     if(!query)return;
     e.preventDefault();
+
+    // Один раз перерисовываем ячейки с учётом нового запроса,
+    // затем строим результаты и маркеры карты.
+    render();
     doSearch();
+
     setTimeout(()=>scrollToMap(),50);
   });
 })();
@@ -2067,29 +2073,118 @@ function partMatchesValue(part,value){
   return aliases.some(x=>queryTokenMatchesText(x,value));
 }
 
+function searchCanonicalVariants(token){
+  const base=normalizeSearchText(token);
+  if(!base)return new Set();
+
+  const variants=new Set([
+    base,
+    translitToLatin(base),
+    normalizeSearchText(fixKeyboardLayout(base))
+  ]);
+
+  // Марки: русский / украинский / английский.
+  for(const [canonical,aliases] of Object.entries(searchAliases)){
+    const all=[canonical,...aliases];
+    if(all.some(x=>normalizeSearchText(x)===base)){
+      for(const x of all){
+        const n=normalizeSearchText(x);
+        if(n){
+          variants.add(n);
+          variants.add(translitToLatin(n));
+        }
+      }
+      // Короткие коды марок (MZ, HD...) не используем как обычный текст:
+      // иначе они могут случайно совпасть с частью другого слова.
+      break;
+    }
+  }
+
+  // Типы деталей: русский / украинский / английский.
+  for(const [canonical,aliases] of Object.entries(partTypeAliases)){
+    const all=[canonical,...aliases];
+    if(all.some(x=>normalizeSearchText(x)===base)){
+      for(const x of all){
+        const n=normalizeSearchText(x);
+        if(n){
+          variants.add(n);
+          variants.add(translitToLatin(n));
+        }
+      }
+      break;
+    }
+  }
+
+  return variants;
+}
+
+function textContainsSearchVariant(text,variant){
+  const normalized=normalizeSearchText(text);
+  if(!normalized || !variant)return false;
+
+  // Для словосочетаний сравниваем отдельные слова, но также
+  // разрешаем "решетки" / "решетку" через начало слова.
+  const words=normalized.split(/\s+/).filter(Boolean);
+
+  if(normalized.includes(variant))return true;
+
+  for(const word of words){
+    if(word===variant || word.startsWith(variant) || variant.startsWith(word)){
+      return true;
+    }
+
+    // Небольшие опечатки только для достаточно длинных слов.
+    if(variant.length>=5 && word.length>=5){
+      const maxDistance=variant.length>=8?2:1;
+      if(Math.abs(word.length-variant.length)<=maxDistance &&
+         levenshtein(variant,word)<=maxDistance){
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
 function searchScore(queryTokens,text){
+  if(!queryTokens.length)return 0;
+
+  // AND-поиск:
+  // каждое слово запроса обязательно должно найтись в ОДНОЙ записи.
+  // Поэтому "Mazda решётка" ищет именно Mazda + решётка,
+  // а не все Mazda и отдельно все решётки.
   let score=0;
 
-  for(const rawToken of queryTokens){
-    const brand=tokenIsBrand(rawToken);
-    const part=tokenIsPartType(rawToken);
+  for(const token of queryTokens){
+    const variants=searchCanonicalVariants(token);
 
-    if(brand){
-      // Марка должна совпасть строго по названию в этой строке
-      // или по коду марки в её артикуле.
-      if(brandMatchesValue(brand,text)) score+=120;
-      else return 0;
+    // Артикулы/коды оставляем более строгими.
+    if(isArticleLikeToken(token)){
+      if(!articleTokenMatchesText(token,text))return 0;
+      score+=180;
       continue;
     }
 
-    if(part){
-      if(partMatchesValue(part,text)) score+=120;
-      else return 0;
-      continue;
+    let matched=false;
+    let bestVariantLength=0;
+
+    for(const variant of variants){
+      if(!variant || variant.length<2)continue;
+
+      // Не считаем короткие латинские коды вроде mz/hd сами по себе.
+      const isShortCode=/^[a-z]{2,3}$/.test(variant);
+      if(isShortCode && variants.size>1)continue;
+
+      if(textContainsSearchVariant(text,variant)){
+        matched=true;
+        bestVariantLength=Math.max(bestVariantLength,variant.length);
+      }
     }
 
-    if(queryTokenMatchesText(rawToken,text)) score+=80;
-    else return 0;
+    if(!matched)return 0;
+
+    // Чем длиннее точное понятие, тем выше приоритет.
+    score+=80+Math.min(bestVariantLength,40);
   }
 
   return score;
@@ -2895,8 +2990,13 @@ function renderMiniMap(found=[]){
 }
 
 let activeMapTarget = null;
+let mapTargetTimer = null;
 
 function clearMapTarget(){
+  if(mapTargetTimer){
+    clearTimeout(mapTargetTimer);
+    mapTargetTimer=null;
+  }
   if(activeMapTarget){
     const old=document.getElementById(activeMapTarget);
     if(old) old.classList.remove("map-target-active");
@@ -2962,7 +3062,9 @@ function showResultOnMap(s,l,n){
 
   // Подсветка включается уже после программной прокрутки,
   // чтобы собственное событие scroll не сняло её мгновенно.
-  setTimeout(()=>{
+  if(mapTargetTimer) clearTimeout(mapTargetTimer);
+  mapTargetTimer=setTimeout(()=>{
+    mapTargetTimer=null;
     activateMapTarget(markerId);
   },750);
 }
@@ -3059,31 +3161,25 @@ function doSearch(){
 
 const searchInput = document.getElementById("search");
 
-// При появлении/изменении результатов не даём браузеру автоматически
-// прыгать по странице: строка поиска остаётся на том же месте экрана.
-// Ручная прокрутка пользователя при этом не блокируется.
+// Живой поиск: результаты появляются уже во время ввода.
+// Главное отличие от старой версии — НЕ вызываем render(), поэтому
+// 450 ячеек склада не пересоздаются на каждую букву.
+// Небольшой debounce оставляет интерфейс плавным на телефоне.
+let searchTimer=null;
 searchInput.addEventListener("input",()=>{
-  const anchorTop = searchInput.getBoundingClientRect().top;
+  clearTimeout(searchTimer);
 
-  // Поиск работает только по уже загруженному в память data.
-  // Firebase write/read здесь вообще не вызывается.
-  render();
-  doSearch();
+  const value=searchInput.value.trim();
+  if(!value){
+    document.getElementById("results").innerHTML="";
+    renderMiniMap([]);
+    if(typeof updateSearchHighlights==="function")updateSearchHighlights([]);
+    return;
+  }
 
-  const restoreSearchPosition = ()=>{
-    const currentTop = searchInput.getBoundingClientRect().top;
-    const delta = currentTop - anchorTop;
-    if(Math.abs(delta) > 0.5){
-      window.scrollBy(0, delta);
-    }
-  };
-
-  // DOM обновляется синхронно, но браузер может применить scroll anchoring
-  // уже на следующем кадре — поэтому восстанавливаем позицию дважды.
-  requestAnimationFrame(()=>{
-    restoreSearchPosition();
-    requestAnimationFrame(restoreSearchPosition);
-  });
+  searchTimer=setTimeout(()=>{
+    doSearch();
+  },120);
 });
 
 rootRef.on("value",async snap=>{
