@@ -726,8 +726,21 @@ function focusAppSearch(){
   }
 }
 function scrollToMap(){
-  const x=document.getElementById("miniMapWrap");
-  if(x)x.scrollIntoView({behavior:"smooth",block:"start"});
+  const wrap=document.getElementById("miniMapWrap");
+  if(!wrap)return;
+
+  // При нажатии «Карта» центрируем именно изображение плана
+  // по центру видимой области экрана.
+  const image=wrap.querySelector(".warehouse-plan");
+  const target=image || wrap;
+  const rect=target.getBoundingClientRect();
+  const targetTop=window.scrollY + rect.top + rect.height/2 - window.innerHeight/2;
+  const maxScroll=Math.max(0,document.documentElement.scrollHeight-window.innerHeight);
+
+  window.scrollTo({
+    top:Math.max(0,Math.min(maxScroll,targetTop)),
+    behavior:"smooth"
+  });
 }
 function scrollToWarehouseCells(){
   const x=document.getElementById("map");
