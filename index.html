@@ -1577,9 +1577,42 @@ function fixKeyboardLayout(value){
 }
 
 function searchTokens(value){
-  return normalizeSearchText(value)
-    .split(/\s+/)
-    .filter(Boolean);
+  const normalized=normalizeSearchText(value);
+  if(!normalized)return [];
+
+  // Сначала сохраняем устойчивые словосочетания как один токен.
+  // Например: "передний бампер", "передній бампер",
+  // "лобовое стекло", "лобове скло", "альфа ромео".
+  const phrases=[
+    "передний бампер","передній бампер",
+    "задний бампер","задній бампер",
+    "левое крыло","ліве крило",
+    "правое крыло","праве крило",
+    "лобовое стекло","лобове скло",
+    "ветровое стекло","вітрове скло",
+    "альфа ромео","land rover","ланд ровер"
+  ].sort((a,b)=>b.length-a.length);
+
+  const tokens=[];
+  let rest=normalized;
+
+  for(const phrase of phrases){
+    if(rest===phrase){
+      tokens.push(phrase);
+      rest="";
+      break;
+    }
+    const re=new RegExp("(^|\\s)"+phrase.replace(/[.*+?^${}()|[\\]\\]/g,"\\\\$&")+"(?=\\s|$)","g");
+    if(re.test(rest)){
+      tokens.push(phrase);
+      rest=rest.replace(re," ").replace(/\\s+/g," ").trim();
+    }
+  }
+
+  if(rest)tokens.push(...rest.split(/\\s+/).filter(Boolean));
+
+  // Убираем дубли, но сохраняем порядок.
+  return [...new Set(tokens)];
 }
 const searchAliases={
   "капот":["капот","hood","bonnet"],
@@ -1589,7 +1622,7 @@ const searchAliases={
   "двери":["дверь","двери","door"],
   "фара":["фара","headlight"],
   "фонарь":["фонарь","фонар","tail light","taillight"],
-  "решетка":["решетка","решётка","grille"],
+  "решетка":["решетка","решётка","решітка","grille","radiator grille"],
 
   "мазда":["мазда","mazda","mz"],
   "хонда":["хонда","honda","hd"],
@@ -1712,6 +1745,21 @@ const bilingualBrandAliases={
   "додж":["додж"]
 };
 for(const [canonical,aliases] of Object.entries(bilingualBrandAliases)){
+  searchAliases[canonical]=[...new Set([...(searchAliases[canonical]||[]),...aliases])];
+}
+
+// Дополнительные варианты написания, которые часто встречаются в выгрузках.
+const extraBrandAliases={
+  "мазда":["mazda","мазда"],
+  "хендай":["hyundai","хендай","хюндай"],
+  "ниссан":["nissan","ниссан","ніссан"],
+  "ауди":["audi","ауди","ауді"],
+  "киа":["kia","киа","кіа"],
+  "инфинити":["infiniti","инфинити","інфініті"],
+  "митсубиси":["mitsubishi","митсубиси","мітсубісі"],
+  "ситроен":["citroen","ситроен","сітроен"]
+};
+for(const [canonical,aliases] of Object.entries(extraBrandAliases)){
   searchAliases[canonical]=[...new Set([...(searchAliases[canonical]||[]),...aliases])];
 }
 
