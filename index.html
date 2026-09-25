@@ -1888,7 +1888,7 @@ function isArticleLikeToken(token){
   // Артикулы/коды вроде mz0903, apmz0903, 27c103, 81b103-j.
   // Для них нельзя использовать агрессивный fuzzy-поиск:
   // mz0903 не должен совпадать с mz0203c только из-за похожих цифр.
-  return /^(?=.*[a-z])(?=.*\\d)[a-z0-9]+$/.test(compact) && compact.length>=4;
+  return /^(?=.*[a-z])(?=.*\d)[a-z0-9]+$/.test(compact) && compact.length>=4;
 }
 
 function articleTokenMatchesText(token,text){
@@ -1901,16 +1901,19 @@ function articleTokenMatchesText(token,text){
     .map(x=>x.trim())
     .filter(Boolean);
 
-  // Сначала строгое совпадение / вхождение.
-  // Это позволяет mz0903 найти APMZ0903, но не mz0203c.
-  if(words.some(w=>w===q || w.includes(q) || q.includes(w))) return true;
+  // Артикул должен совпадать именно с артикулом, а не просто
+  // с похожими цифрами/словами в описании.
+  for(const w of words){
+    if(w===q || w.includes(q) || q.includes(w)) return true;
 
-  // Разрешаем ровно одну опечатку только для достаточно длинного кода.
-  // При этом сравниваем именно код, а не отдельные цифры в конце.
-  if(q.length>=5){
-    for(const w of words){
-      if(Math.abs(w.length-q.length)>1)continue;
-      if(levenshtein(q,w)<=1)return true;
+    // Незаконченный артикул: APMZ09 -> APMZ0903.
+    // Разрешаем только достаточно длинный префикс.
+    if(q.length>=5 && w.startsWith(q)) return true;
+
+    // Одна реальная опечатка для длинного артикула.
+    if(q.length>=7 && Math.abs(w.length-q.length)<=1 &&
+       levenshtein(q,w)<=1){
+      return true;
     }
   }
 
@@ -2235,47 +2238,64 @@ function textContainsSearchVariant(text,variant){
 function searchScore(queryTokens,text){
   if(!queryTokens.length)return 0;
 
-  // AND-поиск:
-  // каждое слово запроса обязательно должно найтись в ОДНОЙ записи.
-  // Поэтому "Mazda решётка" ищет именно Mazda + решётка,
-  // а не все Mazda и отдельно все решётки.
+  // Все слова должны находиться в одной записи.
+  // Специализированные токены (марка, тип детали, артикул)
+  // обрабатываются строго своими правилами.
   let score=0;
 
   for(const token of queryTokens){
-    const variants=searchCanonicalVariants(token);
+    const base=normalizeSearchText(token);
 
-    // Артикулы/коды оставляем более строгими.
+    // 1. Артикул / код — только точный, префиксный или
+    //    контролируемый односимвольный typo-match.
     if(isArticleLikeToken(token)){
       if(!articleTokenMatchesText(token,text))return 0;
-      score+=180;
+      score+=220;
       continue;
     }
 
+    // 2. Марка автомобиля.
+    // tokenIsBrand умеет: мазда / mazda / ма / маз / мазд
+    // и ограниченный fuzzy-вариант вроде "мепзд".
+    const brand=tokenIsBrand(token);
+    if(brand){
+      if(!brandMatchesValue(brand,text))return 0;
+      score+=150;
+      continue;
+    }
+
+    // 3. Тип детали.
+    // tokenIsPartType умеет рус/укр/англ, начало слова и typo-match.
+    const part=tokenIsPartType(token);
+    if(part){
+      if(!partMatchesValue(part,text))return 0;
+      score+=130;
+      continue;
+    }
+
+    // 4. Обычный текст — общий fuzzy-поиск.
+    const variants=searchCanonicalVariants(token);
     let matched=false;
-    let bestVariantLength=0;
+    let bestLength=0;
 
     for(const variant of variants){
       if(!variant || variant.length<2)continue;
 
-      // Не считаем короткие латинские коды вроде mz/hd сами по себе.
       const isShortCode=/^[a-z]{2,3}$/.test(variant);
-      if(isShortCode && variants.size>1)continue;
+      if(isShortCode)continue;
 
       if(textContainsSearchVariant(text,variant)){
         matched=true;
-        bestVariantLength=Math.max(bestVariantLength,variant.length);
+        bestLength=Math.max(bestLength,variant.length);
       }
     }
 
     if(!matched)return 0;
-
-    // Чем длиннее точное понятие, тем выше приоритет.
-    score+=80+Math.min(bestVariantLength,40);
+    score+=80+Math.min(bestLength,40);
   }
 
   return score;
 }
-
 function parseExcelLocations(value){
   const result=[];
   const text=String(value||"").toUpperCase();
