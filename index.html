@@ -174,6 +174,10 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
 .history-entry .history-move{font-weight:700;color:#1f6feb}.history-entry .history-add{color:#2e6b3b;font-weight:700}.history-entry .history-remove{color:#b42318;font-weight:700}
 #historyModal{position:fixed;inset:0;background:#0007;display:none;align-items:center;justify-content:center;padding:16px;z-index:10020}
 #historyModal .dialog{width:min(760px,100%);max-height:calc(100vh - 32px);overflow:auto}
+ .history-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
+.history-head h2{margin:0}
+.history-close{flex:0 0 auto;width:40px;height:40px;padding:0;border:1px solid var(--border);border-radius:10px;background:var(--card);color:var(--ink);font-size:28px;line-height:1;display:flex;align-items:center;justify-content:center}
+.history-close:hover{background:#f1f3f5}
 .history-toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
 .history-toolbar input,.history-toolbar select{flex:1 1 180px}
 
@@ -533,7 +537,10 @@ body.dark .item-meta,body.dark .search-result-map-btn{background:#202a33;color:v
 </div></div>
 
 <div id="historyModal"><div class="dialog">
-<h2>🕘 Подробная история склада</h2>
+<div class="history-head">
+  <h2>🕘 Подробная история склада</h2>
+  <button class="history-close" type="button" aria-label="Закрыть историю" onclick="closeHistory()">×</button>
+</div>
 <div class="history-toolbar">
   <input id="historySearch" type="text" placeholder="Артикул или ячейка…">
   <select id="historyType">
@@ -707,7 +714,11 @@ function focusAppSearch(){
   }
 }
 function scrollToMap(){
-  const x=document.getElementById("miniMapWrap")||document.querySelector(".map");
+  const x=document.getElementById("miniMapWrap");
+  if(x)x.scrollIntoView({behavior:"smooth",block:"start"});
+}
+function scrollToWarehouseCells(){
+  const x=document.getElementById("map");
   if(x)x.scrollIntoView({behavior:"smooth",block:"start"});
 }
 function toggleDarkTheme(){
@@ -2627,6 +2638,25 @@ async function importExcelFile(file){
       try{ history.pushState({warehousePopupGuard:true},"",location.href); }catch(e){}
     }
   });
+
+  // Native Android Back: Capacitor may not send it through browser popstate.
+  try{
+    const AppPlugin=window.Capacitor?.Plugins?.App;
+    if(AppPlugin?.addListener){
+      AppPlugin.addListener("backButton", ({canGoBack}={})=>{
+        if(closeTopPopup()) return;
+        if(canGoBack){
+          try{ window.history.back(); }catch(e){}
+          return;
+        }
+        if(AppPlugin.exitApp){
+          try{ AppPlugin.exitApp(); }catch(e){}
+        }
+      });
+    }
+  }catch(e){
+    console.warn("Native Android Back handler unavailable:",e);
+  }
 })();
 
 document.addEventListener("click",e=>{
@@ -3040,7 +3070,7 @@ render();renderSpecial();renderMiniMap([]);initHistoryUi();setAccessUi();
 <nav class="bottom-nav" id="bottomNav">
   <button onclick="focusAppSearch();haptic()"><span>🔎</span>Поиск</button>
   <button onclick="scrollToMap();haptic()"><span>🗺️</span>Карта</button>
-  <button onclick="window.scrollTo({top:0,behavior:'smooth'});haptic()"><span>📦</span>Склад</button>
+  <button onclick="scrollToWarehouseCells();haptic()"><span>📦</span>Склад</button>
   <button onclick="openHistory();haptic()"><span>🕘</span>История</button>
   <button id="themeNavBtn" onclick="toggleDarkTheme()"><span>🌙</span>Тёмная</button>
 </nav>
