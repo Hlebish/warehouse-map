@@ -2115,26 +2115,97 @@ function partMatchesValue(part,value){
 }
 
 function searchScore(queryTokens,text){
+  const rawText=String(text||"");
+  const normalizedText=normalizeSearchText(rawText);
+  if(!queryTokens.length || !normalizedText)return 0;
+
   let score=0;
 
   for(const rawToken of queryTokens){
-    const brand=tokenIsBrand(rawToken);
-    const part=tokenIsPartType(rawToken);
+    const token=normalizeSearchText(rawToken);
+    if(!token)return 0;
 
-    // AND-семантика: каждый токен обязан совпасть.
+    const brand=tokenIsBrand(token);
+    const part=tokenIsPartType(token);
+
+    // Марка: сначала проверяем все её реальные названия/синонимы
+    // напрямую. Это делает "мазда" и "Mazda" одинаково надёжными.
     if(brand){
-      if(!brandMatchesValue(brand,text))return 0;
+      const aliases=new Set([
+        brand,
+        ...(searchAliases[brand]||[]),
+        ...((bilingualBrandAliases[brand]||[]))
+      ].map(x=>normalizeSearchText(x)).filter(x=>x && x.length>=2));
+
+      const brandCode={
+        мазда:"mz",хонда:"hd",тойота:"ty",ниссан:"ns",форд:"fd",
+        ауди:"au",бмв:"bm",фольксваген:"vw",шевроле:"ch",мерседес:"mb",
+        лексус:"lx",инфинити:"inf",акура:"ac",субару:"su",киа:"ki",
+        хендай:"hy",опель:"op",шкода:"sk",пежо:"pg",рено:"ren",фиат:"ft"
+      }[brand];
+
+      let matched=false;
+
+      for(const alias of aliases){
+        if(normalizedText.split(/\s+/).includes(alias) ||
+           normalizedText.includes(alias)){
+          matched=true;
+          break;
+        }
+      }
+
+      // Для артикулов дополнительно проверяем код марки:
+      // Mazda -> APMZ..., BMW -> APBM..., etc.
+      if(!matched && brandCode){
+        const re=new RegExp("\\bAP"+brandCode+"[A-Z0-9]*\\b","i");
+        matched=re.test(rawText);
+      }
+
+      if(!matched)return 0;
+      score+=180;
+      continue;
+    }
+
+    // Тип детали: прямые русские/украинские/английские алиасы,
+    // затем уже существующая логика по коду последней цифры.
+    if(part){
+      const aliases=new Set([
+        part,
+        ...(partTypeAliases[part]||[]),
+        ...((bilingualPartAliases[part]||[]))
+      ].map(x=>normalizeSearchText(x)).filter(Boolean));
+
+      let matched=false;
+      for(const alias of aliases){
+        if(!alias)continue;
+        if(normalizedText.split(/\s+/).includes(alias) ||
+           normalizedText.includes(alias)){
+          matched=true;
+          break;
+        }
+      }
+
+      if(!matched && partMatchesValue(part,rawText))matched=true;
+      if(!matched)return 0;
+
       score+=150;
       continue;
     }
 
-    if(part){
-      if(!partMatchesValue(part,text))return 0;
-      score+=130;
+    // Артикулы и числовые фрагменты остаются строгими.
+    if(isArticleLikeToken(token)){
+      if(!articleTokenMatchesText(token,rawText))return 0;
+      score+=220;
       continue;
     }
 
-    if(queryTokenMatchesText(rawToken,text)){
+    if(isNumericSearchToken(token)){
+      if(!numericTokenMatchesText(token,rawText))return 0;
+      score+=200;
+      continue;
+    }
+
+    if(queryTokenMatchesText(token,rawText)){
       score+=80;
     }else{
       return 0;
