@@ -36,7 +36,7 @@ label{display:block;font-size:13px;font-weight:700;margin:13px 0 6px}
 textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--border);border-radius:8px;padding:10px;font:inherit}
 
 .search-main-wrap{width:100%;min-width:0;display:flex;flex-direction:column;gap:7px}
-.search-filters{display:grid;grid-template-columns:minmax(150px,1fr) minmax(150px,1fr) minmax(190px,1.35fr) 38px;gap:7px;width:100%}
+.search-filters{display:grid;grid-template-columns:minmax(180px,1fr) minmax(180px,1fr) 38px;gap:7px;width:100%}
 .search-filter{width:100%;min-width:0;height:38px;padding:0 10px;border:1px solid var(--border);border-radius:9px;background:var(--card);color:var(--ink);font:inherit;font-size:13px}
 .search-filter:disabled{opacity:.55;cursor:not-allowed}
 .search-filter-clear{height:38px;width:38px;border:1px solid var(--border);border-radius:9px;background:var(--card);color:var(--muted);font:700 15px/1 inherit;cursor:pointer}
@@ -45,7 +45,6 @@ body.dark .search-filter{background:#151a20;color:#edf2f7;border-color:#303a46}
 body.dark .search-filter-clear{background:#151a20;color:#b7c2ce;border-color:#303a46}
 @media(max-width:760px){
   .search-filters{grid-template-columns:1fr 1fr;gap:6px}
-  .search-filter-part{grid-column:1 / 3}
   .search-filter-clear{position:absolute;right:7px;margin-top:4px}
   .search-main-wrap{padding-right:45px;position:relative}
 }
@@ -474,11 +473,8 @@ body.dark .search-result-info strong,body.dark .result strong{color:#58a6ff}
   <select id="searchBrand" class="search-filter" aria-label="Производитель">
     <option value="">Производитель</option>
   </select>
-  <select id="searchPartType" class="search-filter" aria-label="Тип детали" disabled>
+  <select id="searchPartType" class="search-filter" aria-label="Тип детали">
     <option value="">Тип детали</option>
-  </select>
-  <select id="searchPart" class="search-filter search-filter-part" aria-label="Деталь" disabled>
-    <option value="">Деталь / артикул</option>
   </select>
   <button id="clearSearchFilters" type="button" class="search-filter-clear" title="Сбросить фильтры" aria-label="Сбросить фильтры">✕</button>
 </div>
@@ -786,7 +782,10 @@ function scrollToWarehouseCells(){
     const query=searchInput.value.trim();
     if(!query)return;
     e.preventDefault();
-    doSearch();
+    const brand=document.getElementById("searchBrand")?.value||"";
+    const type=document.getElementById("searchPartType")?.value||"";
+    if(brand||type) filterByCascade();
+    else doSearch();
     setTimeout(()=>scrollToMap(),50);
   });
 })();
@@ -3117,60 +3116,85 @@ function showResultOnMap(s,l,n){
   },750);
 }
 
-/* Каскадный поиск: Производитель → Тип детали → Артикул. */
-const searchBrandCodes={
-  мазда:"MZ", хонда:"HD", тойота:"TY", ниссан:"NS", форд:"FD", ауди:"AU", бмв:"BM",
-  фольксваген:"VW", шевроле:"CH", мерседес:"MB", лексус:"LX", инфинити:"INF", акура:"AC",
-  субару:"SU", митсубиси:"MI", сузуки:"SZ", исузу:"IZ", дайхатсу:"DH", киа:"KI", хендай:"HY",
-  генезис:"GN", дэу:"DW", рено:"REN", пежо:"PG", ситроен:"CT", фиат:"FT", "альфа ромео":"AR",
-  вольво:"VO", сааб:"SA", ягуар:"JG", "ланд ровер":"LR", ровер:"RV", джип:"JP", додж:"DG",
-  крайслер:"CH", кадиллак:"CAD", линкольн:"LN", бьюик:"BK", понтиак:"PT", саат:"ST", шкода:"SK",
-  опель:"OP", порше:"PR", бентли:"BE", масерати:"MA", ламборгини:"LM", феррари:"FR", тесла:"TS",
-  "роллс ройс":"RR", мини:"MIN", мг:"MG", "дженерал моторс":"GM", лада:"VAZ", ваз:"VAZ",
-  газ:"GAZ", уаз:"UAZ", москвич:"MOS", зил:"ZIL", камаз:"KAM", луаз:"LUAZ"
-};
+/* Каскадный поиск: данные производителей/моделей берутся из Excel "кузов весь". */
+const EXCEL_BRANDS = ["Audi","BMW","Cadillac","Chevrolet","Citroen","Daewoo","Dodge","Fiat","Ford","Honda","Hyundai","Jeep","Kia","Lada","Lexus","Mazda","Mercedes","MINI","Mitsubishi","Nissan","Opel","Peugeot","Renault","SEAT","Skoda","Subaru","Tesla","Toyota","Volkswagen","Volvo"];
+const EXCEL_MODELS_BY_BRAND = {"Audi":["100","A1","A4","A4 (B8)","A4 (B9)","A4 (B9) Basic дорест","A4 (B9) S-Line дорест","A4 (B9) дорест","A5/S5","A6","A6 (C7)","A6 (C8)","A8 (D5)","Q5","Q5 (8RB)","Q5 HYBRID","Q7","Q7 (4LB)"],"BMW":["1 series (F40)","3 series (E46) SDN/KB","3 series (E90/E91)","3-series","3-series (F30)","3-series (F31) wagon","5 series (E39)","5 series (E60/E61)","5 series (F10/F11)","5-series","5-series (G30","7 (E65/E66)","7 series (E65/E66)","GT (F07)","X3","X3 (F25)","X5","X5 (E70)","X5 (F15","X5 (F15)","X5 (F15; F85)","X5 (G05) M-Paket","X5 F85"],"Cadillac":["ATS"],"Chevrolet":["AVEO","AVEO (T200)","AVEO HB (T255)","Cruze","CRUZE (J300)","Epica","Epica (KL1_/V250)","LACETTI","Lacetti SDN","MALIBU","VOLT"],"Citroen":["Berlingo","Berlingo (7_)","C-ELYSEE","C-ELYSEE седан (2013 - 2025)","C3","C4","C4 (B7)","C4 / e-Citroen C4"],"Daewoo":["LANOS","MATIZ II","NEXIA","NUBIRA II"],"Dodge":["CHALLENGER","DART","Journey (JC)"],"Fiat":["500 (312)","DOBLO","Doblo (263)","DUCATO","DUCATO (250) GREY","PALIO","PUNTO","PUNTO (199)","TEMPRA","TIPO","UNO"],"Ford":["C-Max","C-MAX (DXA/CB7)","CONNECT","ECOSPORT","EDGE","Escape","Escape St-Line","EXPLORER","Fiesta","Fiesta (ASIA)","FIESTA (JA8)","FIESTA (JHS)","Fiesta VII","Focus","Focus / C-Max","FOCUS C-MAX","Focus II","Focus III","Focus III Wagon","FUSION","Kuga","KUGA / ESCAPE","Mondeo","Mondeo (B4Y/B5Y/BWY)","Mondeo (BA7)","Mondeo LB / KOMBI","MUSTANG","Transit","TRANSIT CONNECT","Transit CUSTOM"],"Honda":["ACCORD","Accord (CP) USA","Accord (CU2)","Accord (USA)","Civic","Civic (HB)","Civic SDN","CIVIC USA","cr-v","CR-V (RM)","CR-V (RW)","FIT","FIT USA","HR-V","PILOT"],"Hyundai":["Accent","ACCENT (MC)","Accent (RB)","Accent/ SOLARIS","Elantra","ELANTRA (CN7)","ELANTRA (CN7) рест","ELANTRA (HD)","ELANTRA USA","GETZ","GETZ (TB)","H100 97 PANEL VAN","I30","iX35","KONA (OS)","Santa Fe (TM)","Santa Fe III","Santa Fe III (DM","Santa Fe IV (TM)","Santa Fe IV (TM) рест","Santa Fe IV рест","SOLARIS","SONATA","Sonata (DN8)","Sonata (LF) rest","TUCSON","TUCSON (NX4)","TUCSON (TL)","TUCSON ix35 (TL)","TUCSON ix35 (TL) рест"],"Jeep":["Cherokee","Compass","GRAND CHEROKEE","Renegade"],"Kia":["CEED","CEED (ED)","NIRO (DE)","Optima","Optima (JF)","PICANTO","Rio","SORENTO","Sorento (UM)","Sorento III (UM)","Sorento IV (MQ4)","SOUL","SOUL USA","Sportage (NQ5)","Sportage (QL)","Sportage (QL) рест","Sportage (SL)"],"LADA":["SAMARA","SAMARA 2108-099"],"Lexus":["ES","LX","RX 350 / 450H"],"Mazda":["3","3 (BL)","3 (BM)","3 (BP)","3 SEDAN","6","6 (GJ","6 (GJ)","CX-30","CX-5","CX-5 (KE)","CX-5 (KF REST)","CX-5 (KF)","CX-7","CX-7 01.6-"],"Mercedes":["C-class (W205)","E-class (W212)","SPRINTER","VIANO/V-KLASSE","VITO","VITO/VIANO"],"MINI":["Countryman (F60)","Countryman (R60)","Countryman S (R60)","S (R55"],"Mitsubishi":["ASX","COLT","l200","L200 (KA_T","Lancer","LANCER (CY)","Lancer X","OUTLANDER","OUTLANDER (CW_W)","OUTLANDER (GG/GF)","Pajero SPORT","SPACE STAR"],"Nissan":["ALMERA","ALTIMA","Juke","JUKE (F15)","Juke (F16)","Leaf","Navarra (D40)","PATHFINDER (R52)","PRIMERA","Qashqai","QASHQAI (J10)","qashqai (j11)","ROGUE","Rogue (T32)","ROGUE / X-TRAIL (T32U)","ROGUE SPORT","Rogue(T33)","X-Trail"],"Opel":["ASTRA","Astra H","Astra H 5-D","ASTRA H 5D","ASTRA H KB","ASTRA/CORSA/VECTRA","Corsa","Corsa / COMBO","CORSA D","Corsa E","INSIGNIA","INSIGNIA (G09)","KADETT E","Zafira"],"Peugeot":["206","206+","207 (W)","301","307","308","407"],"Renault":["CAPTUR","Clio","CLIO HB","Clio II","CLIO III (R0/1)","CLIO IV","Duster","FLUENCE","Kangoo","Master","MEGANE","MEGANE II (M)","MEGANE IV","SYMBOL / LOGAN","Trafic"],"Seat":["ALHAMBRA"],"Skoda":["Fabia","FABIA (542","FABIA (6Y)","FABIA (NJ3","Fabia II","FABIA II/ROOMSTER","Fabia III","Fabia IV (PJ)","KODIAK","Kodiaq","Octavia","OCTAVIA (1U)","OCTAVIA (1Z)","Octavia II","Octavia III (5E)","OCTAVIA TOUR (1U2)","Rapid","Rapid (NH)","Superb","Superb (3V)","YETI"],"Subaru":["CROSSTRACK XV (GP)","CROSSTRACK XV (GT)","Forester","FORESTER (SH)","FORESTER (SJ)","Forester (SK REST)","Impreza","IMPREZA (GP)","IMPREZA (GT)","Legacy","LEGACY (B14)","Outback"],"Tesla":["MODEL 3"],"Toyota":["AURION","Auris","Avensis","C-HR","C-HR (_X1_)","Camry","CAMRY (V40)","CAMRY (XV50)","Camry (XV70)","CAMRY (XV70) LE/XLE","CAMRY (XV70) SE","CAMRY (XV70) SE/XSE","Camry (XV70) SE\\XSE","CAMRY (XV70) XSE","Corolla","Corolla (E14)","COROLLA (E18)","COROLLA (E21)","Corolla (E210)","LAND CRUISER","LAND CRUISER 100","Prius","PRIUS (W50)","RAV 4","RAV4","RAV4 (XA40)","RAV4 (XA50)","SIENNA (XL40)","Yaris","Yaris (XP90) HB","Yaris HB"],"Volkswagen":["AMAROK","AMAROK (2H)","Caddy","CADDY II","Caddy III / LIFE","CADDY IV/LIFE","CADDY/Volkswagen TOURAN","CC","Golf","Golf IV","Golf MK8","GOLF Sportsvan","GOLF V PLUS","Golf VI","Golf VII","GOLF VIII","Golf Ⅵ","Jetta","Jetta / Golf KB","Jetta USA (A7)","MULTIVAN (T5)","Passat (B6)","Passat (B7)","Passat (B8)","PASSAT B6","Passat B8","Passat CC (357)","PASSAT USA","Polo","Polo (6R)","POLO (9N3)","SHARAN","Skoda","T-ROC","TIGUAN","TIGUAN (5N)","Touareg","TOUAREG (7P5)","TOURAN","TOURAN (1T2)","TRANSPORTER T6 (SGA)"],"Volvo":["XC90"]};
 
-const searchPartTypeLabels={
-  "1":"Левое крыло",
-  "2":"Правое крыло",
-  "3":"Капот",
-  "6":"Передний бампер",
-  "7":"Задний бампер"
-};
+const CASCADE_PART_TYPES = [
+  {value:"hood", label:"Капот"},
+  {value:"wing", label:"Крыло"},
+  {value:"bumper", label:"Бампер"},
+  {value:"grille", label:"Решётка"},
+  {value:"molding", label:"Молдинг"},
+  {value:"other", label:"Другое"}
+];
 
-function allWarehouseLinesForCascade(){
-  const rows=[];
-  for(let s=1;s<=5;s++){
-    const ls=s===1?leftLetters:letters;
-    for(const l of ls){
-      for(let n=1;n<=10;n++){
-        const v=data["S"+s]?.[l]?.[String(n)]||"";
-        const lines=String(v).split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
-        for(const line of lines){
-          rows.push({line,s:"S"+s,l,n:String(n),address:address("S"+s,l,n)});
-        }
-      }
-    }
-  }
-  return rows;
+function cascadeNormalize(value){
+  return String(value||"")
+    .toLowerCase()
+    .replace(/ё/g,"е")
+    .replace(/й/g,"и")
+    .replace(/[^a-zа-яіїєґ0-9]+/g," ")
+    .trim();
 }
 
-function cascadeArticleCodes(rows,brandCode,partCode){
+function cascadeBrandMatchesLine(brand,line){
+  const text=String(line||"");
+  const b=cascadeNormalize(brand);
+  const t=cascadeNormalize(text);
+  if(!b || !t)return false;
+  return t.split(/\s+/).includes(b);
+}
+
+function cascadeModelMatchesLine(brand,model,line){
+  if(!model)return true;
+  const text=String(line||"");
+  const brandRe=new RegExp("(^|\\s)"+String(brand).replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+"(?![A-Za-zА-Яа-я])","i");
+  const bm=text.match(brandRe);
+  const tail=bm ? text.slice((bm.index||0)+bm[0].length) : text;
+  const normalizedModel=cascadeNormalize(model);
+  const normalizedTail=cascadeNormalize(tail);
+
+  if(!normalizedModel)return true;
+
+  // Числовые модели (например Mazda 3) проверяем как отдельный токен,
+  // чтобы "3" не совпадало с годом 2013/2023.
+  if(/^\d+$/.test(normalizedModel)){
+    return normalizedTail.split(/\s+/).some(x=>x===normalizedModel);
+  }
+
+  // Сначала точное совпадение с названием модели, затем компактный вариант
+  // для записей вроде "CX-5 (KF)".
+  if(normalizedTail.includes(normalizedModel))return true;
+  const compactModel=normalizedModel.replace(/\s+/g,"");
+  const compactTail=normalizedTail.replace(/\s+/g,"");
+  return compactTail.includes(compactModel);
+}
+
+function cascadePartType(line){
+  const t=cascadeNormalize(line);
+
+  if(/\bкапот\b|\bhood\b|\bbonnet\b/.test(t)) return "hood";
+  if(/\bкрыло\b|\bкрило\b|\bleft wing\b|\bright wing\b|\bfender\b/.test(t)) return "wing";
+  if(/\bбампер\b|\bбамперу\b|\bбампером\b|\bbumper\b/.test(t)) return "bumper";
+  if(/\bрешетка\b|\bрешітка\b|\bрешетки\b|\bрешітки\b|\bgrille\b/.test(t)) return "grille";
+  if(/\bмолдинг\b|\bмолдинги\b|\bмолдингами\b|\bmolding\b|\bmoulding\b/.test(t)) return "molding";
+  return "other";
+}
+
+function cascadeArticleCodes(rows,brand,model,type){
   const set=new Set();
-  const re=brandCode?new RegExp("\\bAP"+brandCode+"[A-Z0-9]*\\d+\\b","i"):null;
-  for(const row of rows){
-    const codes=String(row.line||"").toUpperCase().match(/\bAP[A-Z]{2}\d+\b/g)||[];
-    for(const code of codes){
-      if(re && !re.test(code))continue;
-      if(partCode && code.slice(-1)!==partCode)continue;
-      set.add(code);
-    }
-  }
-  return [...set].sort((a,b)=>a.localeCompare(b,"en",{numeric:true}));
-}
 
-function cascadeFindBrand(code){
-  return Object.keys(searchBrandCodes).find(x=>searchBrandCodes[x]===code)||"";
+  for(const row of rows){
+    if(!cascadeBrandMatchesLine(brand,row.line))continue;
+    if(model && !cascadeModelMatchesLine(brand,model,row.line))continue;
+    if(type && cascadePartType(row.line)!==type)continue;
+
+    const codes=String(row.line||"").toUpperCase().match(/\bAP[A-Z]{2}\d+\b/g)||[];
+    for(const code of codes)set.add(code);
+  }
+
+  return [...set].sort((a,b)=>a.localeCompare(b,"en",{numeric:true}));
 }
 
 function fillCascadeSelect(select,placeholder,items,disabled=false){
@@ -3180,6 +3204,7 @@ function fillCascadeSelect(select,placeholder,items,disabled=false){
   first.value="";
   first.textContent=placeholder;
   select.appendChild(first);
+
   for(const item of items){
     const opt=document.createElement("option");
     if(typeof item==="string"){
@@ -3194,128 +3219,40 @@ function fillCascadeSelect(select,placeholder,items,disabled=false){
   select.disabled=disabled;
 }
 
-function initCascadeSearch(){
-  const brand=document.getElementById("searchBrand");
-  const type=document.getElementById("searchPartType");
-  const part=document.getElementById("searchPart");
-  const clear=document.getElementById("clearSearchFilters");
-  if(!brand||!type||!part)return;
+function cascadeFilteredRows(rows,brand,type,query){
+  const q=String(query||"").trim();
+  const tokens=searchTokens(q);
 
-  const brands=Object.entries(searchBrandCodes)
-    .filter(([name],i,arr)=>arr.findIndex(x=>x[1]===searchBrandCodes[name])===i)
-    .sort((a,b)=>a[0].localeCompare(b[0],"ru"));
-  fillCascadeSelect(brand,"Производитель",brands.map(([name,code])=>({value:code,label:name[0].toUpperCase()+name.slice(1)})));
+  return rows.filter(row=>{
+    if(brand && !cascadeBrandMatchesLine(brand,row.line))return false;
+    if(type && cascadePartType(row.line)!==type)return false;
 
-  const rows=allWarehouseLinesForCascade();
-
-  brand.addEventListener("change",()=>{
-    const code=brand.value;
-    fillCascadeSelect(type,"Тип детали",[],!code);
-    fillCascadeSelect(part,"Деталь / артикул",[],true);
-    if(!code){
-      doSearch();
-      return;
-    }
-
-    const codes=cascadeArticleCodes(rows,code,"");
-    const typeCodes=[...new Set(codes.map(x=>x.slice(-1)).filter(x=>searchPartTypeLabels[x]))]
-      .sort((a,b)=>Number(a)-Number(b));
-    fillCascadeSelect(type,"Тип детали",typeCodes.map(c=>({value:c,label:searchPartTypeLabels[c]})),false);
-    fillCascadeSelect(part,"Деталь / артикул",codes,false);
-    filterByCascade();
+    // Артикул/номер ищется только через основную строку поиска.
+    // Если строка пустая — показываем всё, что подходит под фильтры.
+    if(tokens.length && searchScore(tokens,row.line)<=0)return false;
+    return true;
   });
-
-  type.addEventListener("change",()=>{
-    const code=brand.value;
-    const partCode=type.value;
-    const codes=cascadeArticleCodes(rows,code,partCode);
-    fillCascadeSelect(part,"Деталь / артикул",codes,false);
-    filterByCascade();
-  });
-
-  part.addEventListener("change",()=>{
-    if(part.value){
-      const input=document.getElementById("search");
-      if(input)input.value=part.value;
-    }
-    filterByCascade();
-  });
-
-  clear.addEventListener("click",()=>{
-    brand.value="";
-    fillCascadeSelect(type,"Тип детали",[],true);
-    fillCascadeSelect(part,"Деталь / артикул",[],true);
-    const input=document.getElementById("search");
-    if(input)input.value="";
-    doSearch();
-  });
-
-  window.refreshCascadeSearch=()=>{
-    const selectedBrand=brand.value;
-    const selectedType=type.value;
-    initCascadeSearchState(selectedBrand,selectedType);
-  };
 }
 
-function initCascadeSearchState(selectedBrand,selectedType){
-  const brand=document.getElementById("searchBrand");
-  const type=document.getElementById("searchPartType");
-  const part=document.getElementById("searchPart");
-  if(!brand||!type||!part)return;
-  const rows=allWarehouseLinesForCascade();
-  if(selectedBrand)brand.value=selectedBrand;
-  const codes=cascadeArticleCodes(rows,brand.value,"");
-  const typeCodes=[...new Set(codes.map(x=>x.slice(-1)).filter(x=>searchPartTypeLabels[x]))].sort((a,b)=>Number(a)-Number(b));
-  fillCascadeSelect(type,"Тип детали",typeCodes.map(c=>({value:c,label:searchPartTypeLabels[c]})),!brand.value);
-  if(selectedType)type.value=selectedType;
-  const partCodes=cascadeArticleCodes(rows,brand.value,type.value);
-  fillCascadeSelect(part,"Деталь / артикул",partCodes,false);
-}
-
-function filterByCascade(){
-  const brand=document.getElementById("searchBrand")?.value||"";
-  const type=document.getElementById("searchPartType")?.value||"";
-  const part=document.getElementById("searchPart")?.value||"";
-  if(!brand){
-    doSearch();
-    return;
-  }
-
-  const tokens=[];
-  const brandName=cascadeFindBrand(brand);
-  if(brandName)tokens.push(brandName);
-  if(part){
-    document.getElementById("search").value=part;
-    tokens.push(part);
-  }else if(type){
-    const typeLabel=searchPartTypeLabels[type];
-    if(typeLabel)tokens.push(typeLabel);
-  }
-
+function renderCascadeResults(found){
   const out=document.getElementById("results");
-  const found=[];
-  const rows=allWarehouseLinesForCascade();
-  for(const row of rows){
-    if(!brandMatchesValue(brandName,row.line))continue;
-    if(type && !codePartTypes(row.line).has(normalizeSearchText(searchPartTypeLabels[type])))continue;
-    if(part && !articleTokenMatchesText(part,row.line))continue;
-    found.push({...row,a:row.address,v:row.line,matchedLines:[row.line],score:300});
-  }
+  if(!out)return;
 
-  found.sort((a,b)=>a.line.localeCompare(b.line,"en",{numeric:true}));
   if(!found.length){
     out.innerHTML='<div class="search-results-head">Ничего не найдено</div>';
     renderMiniMap([]);
     return;
   }
 
-  out.innerHTML=`<div class="search-results-head">Найдено: ${found.length}</div>`+found.map((x,i)=>{
-    const safeA=escapeHtml(x.a);
-    const safeLine=escapeHtml(x.line);
-    return `<div class="search-result-row" data-index="${i}">`+
-      `<div class="search-result-info"><strong>${safeA}</strong><span class="article">${safeLine}</span></div>`+
-      `<button type="button" class="search-result-map-btn" data-search-map="${i}">🗺️ На карте</button></div>`;
-  }).join("");
+  out.innerHTML=`<div class="search-results-head">Найдено: ${found.length}</div>`+
+    found.map((x,i)=>{
+      const safeA=escapeHtml(x.a);
+      const safeLine=escapeHtml(x.line);
+      return `<div class="search-result-row" data-index="${i}">`+
+        `<div class="search-result-info"><strong>${safeA}</strong><span class="article">${safeLine}</span></div>`+
+        `<button type="button" class="search-result-map-btn" data-search-map="${i}">🗺️ На карте</button>`+
+        `</div>`;
+    }).join("");
 
   out.querySelectorAll(".search-result-row").forEach((el,i)=>{
     el.addEventListener("click",()=>{
@@ -3323,6 +3260,7 @@ function filterByCascade(){
       if(x)activateMapTarget(`plan-marker-${x.s}-${x.l}-${x.n}`);
     });
   });
+
   out.querySelectorAll("[data-search-map]").forEach(btn=>{
     btn.addEventListener("click",e=>{
       e.stopPropagation();
@@ -3330,7 +3268,66 @@ function filterByCascade(){
       if(x)activateMapTarget(`plan-marker-${x.s}-${x.l}-${x.n}`);
     });
   });
+
   renderMiniMap(found);
+}
+
+function initCascadeSearch(){
+  const brand=document.getElementById("searchBrand");
+  const type=document.getElementById("searchPartType");
+  const clear=document.getElementById("clearSearchFilters");
+  if(!brand||!type)return;
+
+  // Только производители, реально присутствующие в Excel.
+  fillCascadeSelect(brand,"Производитель",EXCEL_BRANDS.map(x=>({value:x,label:x})),false);
+  fillCascadeSelect(type,"Тип детали",CASCADE_PART_TYPES,false);
+
+  brand.addEventListener("change",()=>filterByCascade());
+  type.addEventListener("change",()=>filterByCascade());
+
+  clear?.addEventListener("click",()=>{
+    brand.value="";
+    type.value="";
+    const input=document.getElementById("search");
+    if(input)input.value="";
+    doSearch();
+  });
+
+  window.refreshCascadeSearch=()=>{
+    fillCascadeSelect(brand,"Производитель",EXCEL_BRANDS.map(x=>({value:x,label:x})),false);
+    fillCascadeSelect(type,"Тип детали",CASCADE_PART_TYPES,false);
+  };
+}
+
+function filterByCascade(){
+  const brand=document.getElementById("searchBrand")?.value||"";
+  const type=document.getElementById("searchPartType")?.value||"";
+  const query=document.getElementById("search")?.value||"";
+
+  // Без фильтров полностью сохраняем старый поиск.
+  if(!brand&&!type){
+    doSearch();
+    return;
+  }
+
+  const rows=allWarehouseLinesForCascade();
+  const filtered=cascadeFilteredRows(rows,brand,type,query);
+
+  const found=filtered.map(row=>({
+    ...row,
+    a:row.address,
+    v:row.line,
+    matchedLines:[row.line],
+    score:300
+  }));
+
+  found.sort((a,b)=>{
+    const ac=String(a.line).localeCompare(String(b.line),"en",{numeric:true,sensitivity:"base"});
+    if(ac!==0)return ac;
+    return String(a.a).localeCompare(String(b.a),"en",{numeric:true});
+  });
+
+  renderCascadeResults(found);
 }
 
 function doSearch(){
@@ -3434,7 +3431,10 @@ searchInput.addEventListener("input",()=>{
   // Поиск работает только по уже загруженному в память data.
   // Firebase write/read здесь вообще не вызывается.
   render();
-  doSearch();
+  const brand=document.getElementById("searchBrand")?.value||"";
+  const type=document.getElementById("searchPartType")?.value||"";
+  if(brand||type) filterByCascade();
+  else doSearch();
 
   const restoreSearchPosition = ()=>{
     const currentTop = searchInput.getBoundingClientRect().top;
