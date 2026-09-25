@@ -525,9 +525,6 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
 <div class="actions"><button onclick="closeHistory()">Закрыть</button></div>
 </div></div>
 
-<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -610,12 +607,19 @@ function initFirebase(){
 
 async function loginWithGoogle(){
   const el=document.getElementById("loginError");
-  if(el){el.style.display="none";el.textContent="";}
+
+  if(el){
+    el.style.display="none";
+    el.textContent="";
+  }
 
   if(!firebaseReady || !auth || !provider){
     const ready=initFirebase();
+
     if(!ready || !auth || !provider){
-      showLoginError("Firebase не удалось запустить. Проверьте интернет и обновите страницу.");
+      showLoginError(
+        "Firebase не удалось запустить. Проверьте интернет и обновите страницу."
+      );
       return;
     }
   }
@@ -623,68 +627,304 @@ async function loginWithGoogle(){
   setLoginBusy(true);
 
   try{
-    if(isCapacitorApp()){
-      const plugin=nativeFirebaseAuth || getNativeFirebaseAuth();
 
-      if(!plugin || typeof plugin.signInWithGoogle!=="function"){
-        throw new Error("Нативный Firebase Authentication plugin не подключён к APK.");
+    /*
+     * ============================================================
+     * ANDROID / CAPACITOR
+     * ============================================================
+     */
+
+    if(isCapacitorApp()){
+
+      const plugin =
+        nativeFirebaseAuth ||
+        getNativeFirebaseAuth();
+
+      if(
+        !plugin ||
+        typeof plugin.signInWithGoogle !== "function"
+      ){
+        throw new Error(
+          "Нативный Firebase Authentication plugin не подключён к APK."
+        );
       }
+
+      console.log(
+        "Starting native Google Sign-In..."
+      );
 
       /*
-       * Android: настоящий нативный Google Sign-In.
-       * skipNativeAuth=true нужен, чтобы после получения Google ID token
-       * мы авторизовали именно Firebase Web SDK, которым уже пользуется
-       * карта склада и Realtime Database.
+       * На Android используем нативный Google Sign-In.
+       *
+       * skipNativeAuth=true:
+       * после Google Sign-In мы сами передадим ID token
+       * в Firebase Web SDK.
+       *
+       * useCredentialManager=false:
+       * используем старый стабильный путь Google Sign-In,
+       * а не Android Credential Manager.
        */
-      const result=await plugin.signInWithGoogle({
-        skipNativeAuth:true,
-        useCredentialManager:false
-      });
 
-      const idToken=result?.credential?.idToken;
+      const result =
+        await plugin.signInWithGoogle({
+          skipNativeAuth:true,
+          useCredentialManager:false
+        });
+
+      console.log(
+        "Native Google Sign-In result:",
+        result
+      );
+
+      const idToken =
+        result?.credential?.idToken;
+
       if(!idToken){
-        throw new Error("Google не вернул ID token.");
+
+        console.error(
+          "Google Sign-In result does not contain ID token:",
+          result
+        );
+
+        throw new Error(
+          "Google не вернул ID token."
+        );
       }
 
-      const credential=window.firebase.auth.GoogleAuthProvider.credential(idToken);
-      await auth.signInWithCredential(credential);
+      console.log(
+        "Google ID token received successfully."
+      );
 
-      console.log("Native Google login successful:",auth.currentUser?.email||"user");
+      /*
+       * Передаём Google ID token
+       * в Firebase Web Authentication.
+       */
+
+      const credential =
+        window.firebase.auth.GoogleAuthProvider
+          .credential(idToken);
+
+      await auth.signInWithCredential(
+        credential
+      );
+
+      console.log(
+        "Firebase authentication successful:",
+        auth.currentUser?.email || "user"
+      );
+
       return;
     }
 
-    // Обычный GitHub Pages / браузер: используем popup.
-    await auth.signInWithPopup(provider);
+
+    /*
+     * ============================================================
+     * ОБЫЧНЫЙ БРАУЗЕР / GITHUB PAGES
+     * ============================================================
+     */
+
+    console.log(
+      "Starting browser Google Sign-In..."
+    );
+
+    await auth.signInWithPopup(
+      provider
+    );
+
+    console.log(
+      "Browser Google authentication successful:",
+      auth.currentUser?.email || "user"
+    );
+
 
   }catch(error){
-    console.error("Google login error:",error);
 
-    let msg=error?.message||"Неизвестная ошибка входа.";
+    /*
+     * ============================================================
+     * ПОЛНЫЙ ДИАГНОСТИЧЕСКИЙ ЛОГ
+     * ============================================================
+     */
 
-    if(error?.code === "auth/unauthorized-domain"){
-      msg="Домен сайта не разрешён в Firebase → Authentication → Settings → Authorized domains.";
-    }else if(error?.code === "auth/popup-blocked"){
-      msg="Браузер заблокировал окно Google. Разрешите всплывающие окна и попробуйте снова.";
-    }else if(error?.code === "auth/popup-closed-by-user"){
-      msg="Окно Google было закрыто. Нажмите кнопку ещё раз.";
-    }else if(error?.code === "auth/operation-not-allowed"){
-      msg="В Firebase не включён вход через Google.";
-    }else if(error?.code === "auth/network-request-failed"){
-      msg="Ошибка сети. Проверьте интернет-соединение.";
-    }else if(error?.code === "auth/credential-already-in-use"){
-      msg="Эта учётная запись Google уже используется.";
-    }else if(error?.message?.includes("DEVELOPER_ERROR") || error?.message?.includes("10")){
-      msg="Ошибка настройки Google Sign-In. Проверьте Android-приложение в Firebase и SHA-1/SHA-256 сертификата.";
+    console.error(
+      "================ GOOGLE LOGIN ERROR ================"
+    );
+
+    console.error(
+      "Full error:",
+      error
+    );
+
+    console.error(
+      "Error code:",
+      error?.code
+    );
+
+    console.error(
+      "Error message:",
+      error?.message
+    );
+
+    console.error(
+      "Error name:",
+      error?.name
+    );
+
+    console.error(
+      "Error stack:",
+      error?.stack
+    );
+
+    console.error(
+      "====================================================="
+    );
+
+
+    /*
+     * Получаем максимально подробную информацию
+     * об ошибке.
+     */
+
+    const errorCode =
+      String(error?.code || "");
+
+    const errorMessage =
+      String(error?.message || "");
+
+    let msg =
+      errorMessage ||
+      "Неизвестная ошибка входа.";
+
+
+    /*
+     * ============================================================
+     * FIREBASE WEB ERRORS
+     * ============================================================
+     */
+
+    if(
+      errorCode ===
+      "auth/unauthorized-domain"
+    ){
+
+      msg =
+        "Домен сайта не разрешён в Firebase → " +
+        "Authentication → Settings → Authorized domains.";
+
+    }else if(
+      errorCode ===
+      "auth/popup-blocked"
+    ){
+
+      msg =
+        "Браузер заблокировал окно Google. " +
+        "Разрешите всплывающие окна.";
+
+    }else if(
+      errorCode ===
+      "auth/popup-closed-by-user"
+    ){
+
+      msg =
+        "Окно Google было закрыто. " +
+        "Нажмите кнопку ещё раз.";
+
+    }else if(
+      errorCode ===
+      "auth/operation-not-allowed"
+    ){
+
+      msg =
+        "В Firebase не включён вход через Google.";
+
+    }else if(
+      errorCode ===
+      "auth/network-request-failed"
+    ){
+
+      msg =
+        "Ошибка сети. Проверьте интернет-соединение.";
+
+    }else if(
+      errorCode ===
+      "auth/credential-already-in-use"
+    ){
+
+      msg =
+        "Эта учётная запись Google уже используется.";
+
+
+    /*
+     * ============================================================
+     * GOOGLE ANDROID DEVELOPER ERROR
+     * ============================================================
+     */
+
+    }else if(
+      errorCode === "10" ||
+      errorCode.toLowerCase().includes("developer") ||
+      errorMessage.includes("DEVELOPER_ERROR") ||
+      errorMessage.includes("DEVELOPER ERROR")
+    ){
+
+      msg =
+        "Google Sign-In отклонил настройки Android-приложения.";
+
+
+    /*
+     * ============================================================
+     * GOOGLE NETWORK / CONFIG ERRORS
+     * ============================================================
+     */
+
+    }else if(
+      errorMessage.toLowerCase().includes(
+        "configuration"
+      )
+    ){
+
+      msg =
+        "Google Sign-In сообщил об ошибке конфигурации." +
+        " Проверьте настройки Android-приложения.";
+
+
+    }else if(
+      errorMessage.toLowerCase().includes(
+        "credential"
+      )
+    ){
+
+      msg =
+        "Google Sign-In сообщил об ошибке учётных данных.";
     }
 
-    showLoginError("Ошибка входа: "+msg);
+
+    /*
+     * ============================================================
+     * ПОКАЗЫВАЕМ НА ЭКРАНЕ НАСТОЯЩИЙ КОД ОШИБКИ
+     * ============================================================
+     */
+
+    const visibleCode =
+      errorCode || "нет";
+
+    const visibleMessage =
+      msg || "нет";
+
+    showLoginError(
+      "Ошибка входа.\n\n" +
+      "Код: " +
+      visibleCode +
+      "\n\n" +
+      "Сообщение:\n" +
+      visibleMessage
+    );
+
   }finally{
+
     setLoginBusy(false);
+
   }
 }
-
-window.loginWithGoogle=loginWithGoogle;
-
 const firebaseStarted=initFirebase();
 
 const googleLoginBtn=document.getElementById("googleLoginBtn");
