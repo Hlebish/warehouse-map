@@ -2901,8 +2901,13 @@ function renderMiniMap(found=[]){
 }
 
 let activeMapTarget = null;
+let mapTargetTimer = null;
 
 function clearMapTarget(){
+  if(mapTargetTimer){
+    clearTimeout(mapTargetTimer);
+    mapTargetTimer=null;
+  }
   if(activeMapTarget){
     const old=document.getElementById(activeMapTarget);
     if(old) old.classList.remove("map-target-active");
@@ -2968,27 +2973,11 @@ function showResultOnMap(s,l,n){
 
   // Подсветка включается уже после программной прокрутки,
   // чтобы собственное событие scroll не сняло её мгновенно.
-  setTimeout(()=>{
+  if(mapTargetTimer) clearTimeout(mapTargetTimer);
+  mapTargetTimer=setTimeout(()=>{
+    mapTargetTimer=null;
     activateMapTarget(markerId);
   },750);
-}
-
-function updateSearchHighlights(found){
-  const cells=document.querySelectorAll("#map .cell");
-  cells.forEach(c=>c.classList.remove("search-hit"));
-  if(!found || !found.length)return;
-
-  const wanted=new Set();
-  for(const x of found){
-    if(x.special || !x.s || !x.l || !x.n)continue;
-    wanted.add(`${x.s}-${x.l}-${x.n}`);
-  }
-  if(!wanted.size)return;
-
-  for(const c of cells){
-    const a=c.dataset.address;
-    if(a && wanted.has(a)) c.classList.add("search-hit");
-  }
 }
 
 function doSearch(){
@@ -3078,21 +3067,30 @@ function doSearch(){
          </div>`
     ).join("");
 
-  updateSearchHighlights(found);
   renderMiniMap(found);
 }
 
 const searchInput = document.getElementById("search");
 
-// ВАЖНО: не запускаем тяжёлый поиск на каждую букву.
-// Поиск подтверждается Enter — один полный проход по складу и
-// перерисовка ячеек выполняются только после подтверждения запроса.
-// Это заметно уменьшает лаги на телефоне и не меняет саму логику поиска.
+// Живой поиск: результаты появляются уже во время ввода.
+// Главное отличие от старой версии — НЕ вызываем render(), поэтому
+// 450 ячеек склада не пересоздаются на каждую букву.
+// Небольшой debounce оставляет интерфейс плавным на телефоне.
+let searchTimer=null;
 searchInput.addEventListener("input",()=>{
-  if(!searchInput.value.trim()){
+  clearTimeout(searchTimer);
+
+  const value=searchInput.value.trim();
+  if(!value){
     document.getElementById("results").innerHTML="";
     renderMiniMap([]);
+    updateSearchHighlights([]);
+    return;
   }
+
+  searchTimer=setTimeout(()=>{
+    doSearch();
+  },140);
 });
 
 rootRef.on("value",async snap=>{
