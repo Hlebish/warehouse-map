@@ -683,8 +683,6 @@ async function loginWithGoogle(){
 }
 window.loginWithGoogle=loginWithGoogle;
 
-
-<script id="appHelpers">
 function haptic(duration){
   try{if("vibrate" in navigator)navigator.vibrate(duration||9)}catch(e){}
 }
@@ -725,7 +723,6 @@ function toggleDarkTheme(){
     document.body.classList.add("dark");
   }
 })();
-</script>
 
 const firebaseStarted=initFirebase();
 
