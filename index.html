@@ -34,21 +34,6 @@ main{padding:12px;max-width:1500px;width:100%;margin:auto;overflow:hidden}
 .dialog h2{margin-top:0}.addr{font-family:monospace;color:var(--accent);font-weight:700}
 label{display:block;font-size:13px;font-weight:700;margin:13px 0 6px}
 textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--border);border-radius:8px;padding:10px;font:inherit}
-
-.search-main-wrap{width:100%;min-width:0;display:flex;flex-direction:column;gap:7px}
-.search-filters{display:grid;grid-template-columns:minmax(180px,1fr) minmax(180px,1fr) 38px;gap:7px;width:100%}
-.search-filter{width:100%;min-width:0;height:38px;padding:0 10px;border:1px solid var(--border);border-radius:9px;background:var(--card);color:var(--ink);font:inherit;font-size:13px}
-.search-filter:disabled{opacity:.55;cursor:not-allowed}
-.search-filter-clear{height:38px;width:38px;border:1px solid var(--border);border-radius:9px;background:var(--card);color:var(--muted);font:700 15px/1 inherit;cursor:pointer}
-.search-filter-clear:hover{color:var(--ink);border-color:var(--accent)}
-body.dark .search-filter{background:#151a20;color:#edf2f7;border-color:#303a46}
-body.dark .search-filter-clear{background:#151a20;color:#b7c2ce;border-color:#303a46}
-@media(max-width:760px){
-  .search-filters{grid-template-columns:1fr 1fr;gap:6px}
-  .search-filter-clear{position:absolute;right:7px;margin-top:4px}
-  .search-main-wrap{padding-right:45px;position:relative}
-}
-
 .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}.result{background:#fff;border:1px solid var(--border);border-radius:10px;padding:10px;margin:7px 0;cursor:pointer}
 .result strong{display:block;color:#1264d8;font-size:14px}
 .result .article{display:block;margin-top:5px;color:#222;font-size:13px;font-weight:700}
@@ -467,18 +452,7 @@ body.dark .search-result-info strong,body.dark .result strong{color:#58a6ff}
 <h1>📦 Интерактивная карта склада</h1>
 <div class="sub">Адрес: улица (S1–S5) → полка (A–E слева / F–K справа)</div><div class="app-userbar"><span id="roleBadge" class="role-badge">👁️ Просмотр</span></div>
 <div class="toolbar">
-<div class="search-main-wrap">
 <input id="search" type="search" placeholder="🔎 Поиск детали, артикула или адреса…" style="width:100%;min-width:0">
-<div id="searchFilters" class="search-filters" aria-label="Фильтры поиска">
-  <select id="searchBrand" class="search-filter" aria-label="Производитель">
-    <option value="">Производитель</option>
-  </select>
-  <select id="searchPartType" class="search-filter" aria-label="Тип детали">
-    <option value="">Тип детали</option>
-  </select>
-  <button id="clearSearchFilters" type="button" class="search-filter-clear" title="Сбросить фильтры" aria-label="Сбросить фильтры">✕</button>
-</div>
-</div>
 <button class="primary" onclick="document.getElementById('excelFile').click()">📥 Загрузить Excel</button>
 <button data-edit-only onclick="exportExcel()">📤 Экспорт Excel</button>
 <button data-admin-only onclick="temporaryClearWarehouse()" style="background:#fee2e2;color:#991b1b;border-color:#fca5a5">🗑️ Очистить склад</button><button onclick="openHistory()">🕘 История</button>
@@ -782,10 +756,7 @@ function scrollToWarehouseCells(){
     const query=searchInput.value.trim();
     if(!query)return;
     e.preventDefault();
-    const brand=document.getElementById("searchBrand")?.value||"";
-    const type=document.getElementById("searchPartType")?.value||"";
-    if(brand||type) filterByCascade();
-    else doSearch();
+    doSearch();
     setTimeout(()=>scrollToMap(),50);
   });
 })();
@@ -1571,106 +1542,202 @@ async function clearAll(){
  catch(e){setSync("⚠️ Ошибка синхронизации","err");console.error(e)}
 }
 function normalizeSearchText(value){
-  return String(value||"")
+  return String(value??"")
+    .normalize("NFKC")
     .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g,"")
     .replace(/ё/g,"е")
-    .replace(/й/g,"и")
     .replace(/[^a-zа-яіїєґ0-9]+/g," ")
+    .replace(/\s+/g," ")
     .trim();
 }
 
-function translitToLatin(value){
-  const map={
-    "а":"a","б":"b","в":"v","г":"g","д":"d","е":"e","ж":"zh","з":"z","и":"i","й":"y",
-    "к":"k","л":"l","м":"m","н":"n","о":"o","п":"p","р":"r","с":"s","т":"t","у":"u",
-    "ф":"f","х":"h","ц":"c","ч":"ch","ш":"sh","щ":"sch","ъ":"","ы":"y","ь":"","э":"e",
-    "ю":"yu","я":"ya","і":"i","ї":"yi","є":"ie","ґ":"g"
-  };
-  return normalizeSearchText(value).split("").map(ch=>map[ch]??ch).join("");
-}
+/* ------------------------------------------------------------------
+   Умный языковой слой поиска.
+   Один и тот же запрос понимает русский, украинский, английский,
+   транслитерацию и случайную раскладку клавиатуры.
+   ------------------------------------------------------------------ */
 
-function fixKeyboardLayout(value){
-  const ru="йцукенгшщзхъфывапролджэячсмитьбю";
-  const en="qwertyuiop[]asdfghjkl;'zxcvbnm,.";
-  const text=String(value||"").toLowerCase();
-  return text.split("").map(ch=>{
-    const i=ru.indexOf(ch);
-    return i>=0 ? en[i] : ch;
+const RU_LAYOUT="йцукенгшщзхъфывапролджэячсмитьбю";
+const UA_LAYOUT="йцукенгшщзхїфівапролджєячсмитьбю";
+const EN_LAYOUT="qwertyuiop[]asdfghjkl;'zxcvbnm,.";
+
+function keyboardMap(value,from,to){
+  const s=String(value||"").toLowerCase();
+  return s.split("").map(ch=>{
+    const i=from.indexOf(ch);
+    return i>=0 ? to[i] : ch;
   }).join("");
 }
 
-function searchTokens(value){
-  return normalizeSearchText(value)
-    .split(/\s+/)
-    .filter(Boolean);
+function fixKeyboardLayout(value){
+  return keyboardMap(String(value||""),RU_LAYOUT,EN_LAYOUT);
 }
-const searchAliases={
-  "капот":["капот","hood","bonnet"],
-  "крыло":["крыло","wing"],
-  "бампер":["бампер","bumper"],
-  "дверь":["дверь","door"],
-  "двери":["дверь","двери","door"],
-  "фара":["фара","headlight"],
-  "фонарь":["фонарь","фонар","tail light","taillight"],
-  "решетка":["решетка","решётка","grille"],
 
+function keyboardVariants(value){
+  const raw=String(value||"").toLowerCase();
+  const out=new Set([raw]);
+  out.add(keyboardMap(raw,RU_LAYOUT,EN_LAYOUT));
+  out.add(keyboardMap(raw,UA_LAYOUT,EN_LAYOUT));
+  out.add(keyboardMap(raw,EN_LAYOUT,RU_LAYOUT));
+  out.add(keyboardMap(raw,EN_LAYOUT,UA_LAYOUT));
+  return [...out].filter(Boolean);
+}
+
+/* Более естественная транслитерация: "тойота" -> "toyota",
+   а не "toyiota". */
+function translitToLatin(value){
+  let s=normalizeSearchText(value);
+
+  const replacements=[
+    ["йо","yo"],["йе","ye"],["йа","ya"],["йу","yu"],["йи","yi"],
+    ["ё","yo"],["ж","zh"],["х","kh"],["ц","ts"],["ч","ch"],
+    ["ш","sh"],["щ","shch"],["ю","yu"],["я","ya"],
+    ["є","ie"],["ї","yi"],["ґ","g"],["ъ",""],["ь",""],
+    ["ы","y"],["э","e"]
+  ];
+  for(const [a,b] of replacements)s=s.replaceAll(a,b);
+
+  const map={
+    "а":"a","б":"b","в":"v","г":"g","д":"d","е":"e","з":"z",
+    "и":"i","й":"y","к":"k","л":"l","м":"m","н":"n","о":"o",
+    "п":"p","р":"r","с":"s","т":"t","у":"u","ф":"f",
+    "і":"i","є":"ie","ї":"yi","ґ":"g"
+  };
+
+  return s.split("").map(ch=>map[ch]??ch).join("");
+}
+
+/* Устойчивое расстояние с перестановкой соседних букв.
+   Например "маздва" и "мазда" / "toytoa" и "toyota". */
+function damerauLevenshtein(a,b){
+  a=String(a||""); b=String(b||"");
+  if(a===b)return 0;
+  if(!a)return b.length;
+  if(!b)return a.length;
+
+  const da=new Map();
+  const maxDist=a.length+b.length;
+  const d=Array.from({length:a.length+2},()=>Array(b.length+2).fill(0));
+  d[0][0]=maxDist;
+  for(let i=0;i<=a.length;i++){d[i+1][0]=maxDist;d[i+1][1]=i;}
+  for(let j=0;j<=b.length;j++){d[0][j+1]=maxDist;d[1][j+1]=j;}
+
+  for(let i=1;i<=a.length;i++){
+    let db=0;
+    for(let j=1;j<=b.length;j++){
+      const i1=da.get(b[j-1])||0;
+      const j1=db;
+      let cost=1;
+      if(a[i-1]===b[j-1]){cost=0;db=j;}
+
+      d[i+1][j+1]=Math.min(
+        d[i][j]+cost,
+        d[i+1][j]+1,
+        d[i][j+1]+1,
+        d[i1][j1]+(i-i1-1)+1+(j-j1-1)
+      );
+    }
+    da.set(a[i-1],i);
+  }
+
+  return d[a.length+1][b.length+1];
+}
+
+function levenshtein(a,b){
+  return damerauLevenshtein(a,b);
+}
+
+/* Семантические группы: русский ↔ украинский ↔ English. */
+const bilingualSearchGroups=[
+  ["капот","hood","bonnet"],
+  ["крыло","кри́ло","крило","wing","left wing","right wing"],
+  ["бампер","bumper","front bumper","rear bumper"],
+  ["решетка","решётка","решітка","grille","grill","radiator grille"],
+  ["молдинг","молдинги","molding","moulding","trim"],
+  ["дверь","двери","двері","door"],
+  ["фара","фары","headlight","head lamp"],
+  ["фонарь","фонари","ліхтар","ліхтарі","tail light","taillight"],
+  ["зеркало","зеркала","дзеркало","дзеркала","mirror"],
+  ["стекло","стекла","скло","скла","glass"],
+  ["лобовое стекло","лобове скло","windshield"],
+  ["крышка","крышки","кришка","кришки","lid"],
+  ["левое крыло","ліве крило","left wing"],
+  ["правое крыло","праве крило","right wing"],
+  ["передний бампер","передній бампер","front bumper"],
+  ["задний бампер","задній бампер","rear bumper"],
+  ["усилитель","підсилювач","reinforcement"],
+  ["подкрылок","підкрилок","fender liner"],
+  ["облицовка","облицювання","trim","fascia"]
+];
+
+const bilingualTokenPairs={};
+for(const group of bilingualSearchGroups){
+  const normalizedGroup=group.map(normalizeSearchText).filter(Boolean);
+  for(const alias of normalizedGroup){
+    bilingualTokenPairs[alias]=[...new Set(normalizedGroup.filter(x=>x!==alias))];
+  }
+}
+
+/* Для марок используем текущий словарь файла + украинские формы.
+   Важный момент: кириллица и латиница сводятся к одной семантической
+   форме через translitToLatin(). */
+const searchAliases={
   "мазда":["мазда","mazda","mz"],
   "хонда":["хонда","honda","hd"],
   "тойота":["тойота","toyota","ty"],
-  "ниссан":["ниссан","nissan","ns"],
+  "ниссан":["ниссан","ніссан","nissan","ns"],
   "форд":["форд","ford","fd"],
-  "ауди":["ауди","audi","au"],
+  "ауди":["ауди","ауді","audi","au"],
   "бмв":["бмв","bmw"],
-  "фольксваген":["фольксваген","volkswagen","vw"],
-  "шевроле":["шевроле","chevrolet","chevy"],
+  "фольксваген":["фольксваген","фольксваген","volkswagen","vw"],
+  "шевроле":["шевроле","chevrolet","chevy","ch"],
   "мерседес":["мерседес","mercedes","mb"],
-
   "лексус":["лексус","lexus","lx"],
-  "инфинити":["инфинити","infiniti","inf"],
+  "инфинити":["инфинити","інфініті","infiniti","inf"],
   "акура":["акура","acura","ac"],
   "субару":["субару","subaru","su"],
-  "митсубиси":["митсубиси","mitsubishi","mits"],
-  "сузуки":["сузуки","suzuki","sz"],
-  "исузу":["исузу","isuzu","iz"],
+  "митсубиси":["митсубиси","мітсубісі","mitsubishi","mits"],
+  "сузуки":["сузуки","сузукі","suzuki","sz"],
+  "исузу":["исузу","ісузу","isuzu","iz"],
   "дайхатсу":["дайхатсу","daihatsu","dh"],
-  "киа":["киа","kia","ki"],
-  "хендай":["хендай","hyundai","hy"],
-  "генезис":["генезис","genesis","gn"],
-  "дэу":["дэу","daewoo","dw"],
-  "ренo":["рено","renault","ren"],
+  "киа":["киа","кіа","kia","ki"],
+  "хендай":["хендай","хюндай","hyundai","hy"],
+  "генезис":["генезис","генезіс","genesis","gn"],
+  "дэу":["дэу","деу","daewoo","dw"],
+  "рено":["рено","renault","ren"],
   "пежо":["пежо","peugeot","pg"],
-  "ситроен":["ситроен","citroen","citroën","ct"],
-  "фиат":["фиат","fiat","ft"],
+  "ситроен":["ситроен","сітроен","citroen","citroën","ct"],
+  "фиат":["фиат","фіат","fiat","ft"],
   "альфа ромео":["альфа ромео","alfa romeo","alfa","ar"],
   "вольво":["вольво","volvo","vo"],
   "сааб":["сааб","saab","sa"],
   "ягуар":["ягуар","jaguar","jg"],
-  "ланд ровер":["ланд ровер","land rover","lr"],
+  "ланд ровер":["ланд ровер","ленд ровер","land rover","lr"],
   "ровер":["ровер","rover","rv"],
   "джип":["джип","jeep","jp"],
   "додж":["додж","dodge","dg"],
   "крайслер":["крайслер","chrysler","ch"],
-  "крайслер":["крайслер","chrysler","ch"],
-  "кадиллак":["кадиллак","cadillac","cad"],
-  "линкольн":["линкольн","lincoln","ln"],
-  "бьюик":["бьюик","buick","bk"],
-  "понтиак":["понтиак","pontiac","pt"],
-  "саат":["саат","seat","st"],
+  "кадиллак":["кадиллак","кадиллак","cadillac","cad"],
+  "линкольн":["линкольн","лінкольн","lincoln","ln"],
+  "бьюик":["бьюик","бьюїк","buick","bk"],
+  "понтиак":["понтиак","понтіак","pontiac","pt"],
+  "саат":["саат","сеат","seat","st"],
   "шкода":["шкода","skoda","sk"],
   "опель":["опель","opel","op"],
   "порше":["порше","porsche","pr"],
-  "бентли":["бентли","bentley","be"],
-  "масерати":["масерати","maserati","ma"],
-  "ламборгини":["ламборгини","lamborghini","lm"],
-  "феррари":["феррари","ferrari","fr"],
+  "бентли":["бентли","бентлі","bentley","be"],
+  "масерати":["масерати","масераті","maserati","ma"],
+  "ламборгини":["ламборгини","ламборгіні","lamborghini","lm"],
+  "феррари":["феррари","феррарі","ferrari","fr"],
   "тесла":["тесла","tesla","ts"],
-  "рoлс рoйс":["роллс ройс","rolls royce","rr"],
-  "мини":["мини","mini"],
+  "роллс ройс":["роллс ройс","rolls royce","rr"],
+  "мини":["мини","міні","mini"],
   "мг":["мг","mg"],
   "дженерал моторс":["дженерал моторс","general motors","gm"],
-
-  "лада":["лада","лада","lada","ваз","vaz"],
-  "ваз":["ваз","vaz","лада","lada"],
+  "лада":["лада","ваз","lada","vaz"],
+  "ваз":["ваз","лада","vaz","lada"],
   "газ":["газ","gaz"],
   "уаз":["уаз","uaz"],
   "москвич":["москвич","moskvich"],
@@ -1679,224 +1746,87 @@ const searchAliases={
   "луаз":["луаз","luaz"]
 };
 
-// Украинские варианты тех же марок/терминов. Поиск становится двуязычным:
-// пользователь может вводить русский, украинский или английский вариант,
-// а данные в Excel могут быть записаны вперемешку.
-const bilingualBrandAliases={
+/* Коды марок, которые уже используются системой артикулов. */
+const brandCodeMap={
+  "мазда":"MZ","хонда":"HD","тойота":"TY","ниссан":"NS","форд":"FD",
+  "ауди":"AU","бмв":"BM","фольксваген":"VW","шевроле":"CH","мерседес":"MB",
+  "лексус":"LX","инфинити":"INF","акура":"AC","субару":"SU","киа":"KI",
+  "хендай":"HY","опель":"OP","шкода":"SK","пежо":"PG","рено":"REN","фиат":"FT"
+};
+
+function normalizeAliasForms(items){
+  const out=new Set();
+  for(const item of items||[]){
+    const n=normalizeSearchText(item);
+    if(!n)continue;
+    out.add(n);
+    out.add(translitToLatin(n));
+  }
+  return [...out].filter(Boolean);
+}
+
+const brandSemanticGroups={};
+for(const [brand,aliases] of Object.entries(searchAliases)){
+  const all=normalizeAliasForms([brand,...aliases]);
+  brandSemanticGroups[brand]=new Set(all);
+}
+
+/* Украинские пары марок, для которых транслитерация не совпадает
+   с русским написанием один-в-один. */
+const extraBrandPairs={
   "мазда":["мазда"],
   "хонда":["хонда"],
   "тойота":["тойота"],
   "ниссан":["ніссан"],
-  "форд":["форд"],
   "ауди":["ауді"],
-  "бмв":["бмв"],
-  "фольксваген":["фольксваген"],
-  "шевроле":["шевроле"],
-  "мерседес":["мерседес"],
-  "лексус":["лексус"],
   "инфинити":["інфініті"],
-  "акура":["акура"],
-  "субару":["субару"],
   "митсубиси":["мітсубісі"],
   "сузуки":["сузукі"],
   "исузу":["ісузу"],
-  "дайхатсу":["дайхатсу"],
   "киа":["кіа"],
-  "хендай":["хюндай","хендай"],
   "генезис":["генезіс"],
-  "дэу":["деу"],
-  "рено":["рено"],
-  "пежо":["пежо"],
   "ситроен":["сітроен"],
   "фиат":["фіат"],
   "альфа ромео":["альфа ромео"],
-  "вольво":["вольво"],
-  "сааб":["сааб"],
-  "ягуар":["ягуар"],
-  "ланд ровер":["ленд ровер","ланд ровер"],
-  "ровер":["ровер"],
-  "джип":["джип"],
-  "додж":["додж"],
-  "крайслер":["крайслер"],
+  "ланда ровер":["ленд ровер"],
   "кадиллак":["кадилак"],
   "линкольн":["лінкольн"],
   "бьюик":["бьюїк"],
   "понтиак":["понтіак"],
   "саат":["сеат"],
-  "шкода":["шкода"],
-  "опель":["опель"],
-  "порше":["порше"],
   "бентли":["бентлі"],
   "масерати":["масераті"],
   "ламборгини":["ламборгіні"],
   "феррари":["феррарі"],
-  "тесла":["тесла"],
-  "мини":["міні"],
-  "додж":["додж"]
+  "мини":["міні"]
 };
-for(const [canonical,aliases] of Object.entries(bilingualBrandAliases)){
-  searchAliases[canonical]=[...new Set([...(searchAliases[canonical]||[]),...aliases])];
-}
 
-// Частые украинские слова, которые встречаются в описаниях запчастей.
-const bilingualPartAliases={
-  "крыло":["крило"],
-  "дверь":["двері"],
-  "фонарь":["ліхтар","ліхтарі"],
-  "решетка":["решітка"],
-  "зеркало":["дзеркало","дзеркала"],
-  "стекло":["скло"],
-  "лобовое стекло":["лобове скло","вітрове скло"],
-  "крышка":["кришка"],
-  "передний бампер":["передній бампер"],
-  "задний бампер":["задній бампер"],
-  "левое крыло":["ліве крило"],
-  "правое крыло":["праве крило"]
-};
-// partTypeAliases объявлен ниже. Слияние украинских алиасов выполняем после его объявления.
-
-function levenshtein(a,b){
-  if(a===b)return 0;
-  if(!a)return b.length;
-  if(!b)return a.length;
-  if(a.length>b.length)[a,b]=[b,a];
-
-  let prev=Array.from({length:a.length+1},(_,i)=>i);
-
-  for(let j=1;j<=b.length;j++){
-    const cur=[j];
-    for(let i=1;i<=a.length;i++){
-      cur[i]=Math.min(
-        cur[i-1]+1,
-        prev[i]+1,
-        prev[i-1]+(a[i-1]===b[j-1]?0:1)
-      );
-    }
-    prev=cur;
+for(const [brand,alts] of Object.entries(extraBrandPairs)){
+  if(!brandSemanticGroups[brand])brandSemanticGroups[brand]=new Set();
+  for(const x of alts){
+    for(const y of normalizeAliasForms([x]))brandSemanticGroups[brand].add(y);
   }
-  return prev[a.length];
-}
-
-const bilingualTokenPairs={
-  "крыло":"крило", "крылья":"крила", "левое":"ліве", "правое":"праве",
-  "дверь":"двері", "двери":"двері", "фонарь":"ліхтар", "фонари":"ліхтарі",
-  "решетка":"решітка", "решетки":"решітки", "зеркало":"дзеркало", "зеркала":"дзеркала",
-  "стекло":"скло", "стекла":"скла", "лобовое":"лобове", "ветровое":"вітрове",
-  "крышка":"кришка", "крышки":"кришки", "передний":"передній", "задний":"задній",
-  "правый":"правий", "левый":"лівий", "правое":"праве", "левое":"ліве",
-  "задняя":"задня", "передняя":"передня", "боковой":"боковий", "боковая":"бокова",
-  "алюминиевый":"алюмінієвий", "алюминиевая":"алюмінієва", "пластиковый":"пластиковий",
-  "усилитель":"підсилювач", "подкрылок":"підкрилок", "облицовка":"облицювання",
-  "молдинг":"молдинг", "решітка":"решетка", "крило":"крыло", "дзеркало":"зеркало",
-  "скло":"стекло", "ліхтар":"фонарь", "кришка":"крышка", "підсилювач":"усилитель",
-  "підкрилок":"подкрылок", "облицювання":"облицовка", "передній":"передний", "задній":"задний"
-};
-
-function expandSearchToken(token){
-  const base=normalizeSearchText(token);
-  const result=new Set([
-    base,
-    translitToLatin(base),
-    normalizeSearchText(fixKeyboardLayout(base))
-  ]);
-
-  const langPair=bilingualTokenPairs[base];
-  if(langPair) result.add(normalizeSearchText(langPair));
-  for(const [a,b] of Object.entries(bilingualTokenPairs)){
-    if(b===base) result.add(normalizeSearchText(a));
-  }
-
-  // Ищем совпадение в обе стороны:
-  // "мазда" -> Mazda -> MZ
-  // "Mazda" -> мазда -> MZ
-  // "MZ" -> Mazda -> мазда
-  for(const [key,aliases] of Object.entries(searchAliases)){
-    const all=[key,...aliases].map(normalizeSearchText);
-
-    if(all.includes(base)){
-      all.forEach(x=>result.add(x));
-    }
-  }
-
-  return [...result].filter(Boolean);
-}
-
-const brandCodeAliases={
-  "mz":["mazda","мазда","mz"],
-  "hd":["honda","хонда","hd"],
-  "ty":["toyota","тойота","ty"],
-  "ns":["nissan","ниссан","ns"],
-  "fd":["ford","форд","fd"],
-  "au":["audi","ауди","au"],
-  "bm":["bmw","бмв","bm"],
-  "vw":["volkswagen","фольксваген","vw"],
-  "ch":["chevrolet","шевроле","ch","chevy"],
-  "mb":["mercedes","мерседес","mb"],
-  "lx":["lexus","лексус","lx"],
-  "inf":["infiniti","инфинити","inf"],
-  "ac":["acura","акура","ac"],
-  "su":["subaru","субару","su"],
-  "ki":["kia","киа","ki"],
-  "hy":["hyundai","хендай","hy"],
-  "op":["opel","опель","op"],
-  "sk":["skoda","шкода","sk"],
-  "pg":["peugeot","пежо","pg"],
-  "ren":["renault","рено","ren"],
-  "ft":["fiat","фиат","ft"]
-};
-
-const partCodeAliases={
-  "1":["крыло левое","левое крыло","крыло","wing"],
-  "2":["крыло правое","правое крыло","крыло","wing"],
-  "3":["капот","hood","bonnet"],
-  "6":["бампер","передний бампер","bumper"],
-  "7":["задний бампер","задний бампер","rear bumper","бампер","bumper"]
-};
-
-function addCodeMeaning(text){
-  let result=String(text||"");
-  const codes=result.match(/AP[A-ZА-Я]{2}\d{4}/gi)||[];
-
-  for(const code of codes){
-    const upper=code.toUpperCase();
-    const brand=upper.slice(2,4).toLowerCase();
-    const part=upper.slice(-1);
-
-    if(brandCodeAliases[brand]){
-      result+=" "+brandCodeAliases[brand].join(" ");
-    }
-
-    if(partCodeAliases[part]){
-      result+=" "+partCodeAliases[part].join(" ");
-    }
-  }
-
-  return result;
 }
 
 const partTypeAliases={
   "капот":["капот","hood","bonnet"],
-  "крыло":["крыло","крило","wing","левое крыло","правое крыло","ліве крило","праве крило"],
-  "левое крыло":["левое крыло","крыло","крило","ліве крило","wing","left wing"],
-  "правое крыло":["правое крыло","крыло","крило","праве крило","wing","right wing"],
+  "крыло":["крыло","крило","wing","левое крыло","правое крыло","ліве крило","праве крило","left wing","right wing"],
+  "левое крыло":["левое крыло","ливая","крило","ліве крило","left wing"],
+  "правое крыло":["правое крыло","крило","праве крило","right wing"],
   "бампер":["бампер","bumper","передний бампер","передній бампер","front bumper","задний бампер","задній бампер","rear bumper"],
   "передний бампер":["бампер","передний бампер","передній бампер","front bumper"],
   "задний бампер":["бампер","задний бампер","задній бампер","rear bumper"],
-  "дверь":["дверь","двери","двері","дверка","door"],
-  "фара":["фара","headlight"],
-  "фонарь":["фонарь","фонар","ліхтар","ліхтарі","tail light","taillight"],
-  "решетка":["решетка","решётка","решітка","grille"],
-  "зеркало":["зеркало","дзеркало","дзеркала","mirror"],
-  "стекло":["стекло","скло","glass"],
+  "дверь":["дверь","двери","двері","door"],
+  "фара":["фара","headlight","head lamp"],
+  "фонарь":["фонарь","фонари","ліхтар","ліхтарі","tail light","taillight"],
+  "решетка":["решетка","решётка","решітка","grille","grill","radiator grille"],
+  "зеркало":["зеркало","зеркала","дзеркало","дзеркала","mirror"],
+  "стекло":["стекло","стекла","скло","скла","glass"],
   "лобовое стекло":["лобовое стекло","лобове скло","ветровое стекло","вітрове скло","windshield"],
-  "крышка":["крышка","кришка","lid"],
-  "доска":["доска","щити","щиток"]
+  "крышка":["крышка","крышки","кришка","кришки","lid"],
+  "молдинг":["молдинг","молдинги","molding","moulding","trim"],
+  "другое":["другое","інше","other"]
 };
-
-// Добавляем украинские варианты только после объявления partTypeAliases.
-for(const [canonical,aliases] of Object.entries(bilingualPartAliases)){
-  partTypeAliases[canonical]=[...new Set([...(partTypeAliases[canonical]||[]),...aliases])];
-}
 
 const partCodeTypes={
   "1":["левое крыло","крыло","left wing"],
@@ -1906,16 +1836,74 @@ const partCodeTypes={
   "7":["бампер","задний бампер","rear bumper","bumper"]
 };
 
+for(const [canonical,aliases] of Object.entries(bilingualTokenPairs)){
+  /* Накладываем языковые пары только на уже существующий canonical type. */
+  const target=Object.keys(partTypeAliases).find(k=>normalizeSearchText(k)===canonical);
+  if(target){
+    partTypeAliases[target]=[...new Set([...(partTypeAliases[target]||[]),...aliases])];
+  }
+}
+
+function searchTokens(value){
+  return normalizeSearchText(value)
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+function expandSearchToken(token){
+  const base=normalizeSearchText(token);
+  if(!base)return [];
+
+  const result=new Set([
+    base,
+    translitToLatin(base),
+    ...keyboardVariants(base).map(normalizeSearchText)
+  ]);
+
+  /* Синонимы деталей. */
+  const baseLatin=translitToLatin(base);
+  for(const [key,aliases] of Object.entries(partTypeAliases)){
+    const forms=normalizeAliasForms([key,...aliases]);
+    if(forms.includes(base)||forms.includes(baseLatin)){
+      forms.forEach(x=>result.add(x));
+    }
+  }
+
+  /* Синонимы/варианты брендов. */
+  for(const [brand,formsSet] of Object.entries(brandSemanticGroups)){
+    if(formsSet.has(base)||formsSet.has(baseLatin)){
+      formsSet.forEach(x=>result.add(x));
+      result.add(brand);
+      result.add(translitToLatin(brand));
+    }
+  }
+
+  /* Украинские/русские пары общих слов. */
+  if(bilingualTokenPairs[base]){
+    for(const x of bilingualTokenPairs[base]){
+      result.add(x);
+      result.add(translitToLatin(x));
+    }
+  }
+  for(const [a,bList] of Object.entries(bilingualTokenPairs)){
+    if(bList.includes(base)){
+      result.add(a);
+      result.add(translitToLatin(a));
+    }
+  }
+
+  return [...result].filter(Boolean);
+}
+
 function isArticleLikeToken(token){
   const compact=normalizeSearchText(token).replace(/[^a-z0-9]/g,"");
-  // Полный артикул/код: APMZ0903, MZ0903, 27C103 и т.п.
-  // Такие токены никогда не отправляем в общий fuzzy-поиск.
   return /^(?=.*[a-z])(?=.*\d)[a-z0-9]+$/.test(compact) && compact.length>=4;
 }
 
 function isNumericSearchToken(token){
-  const compact=normalizeSearchText(token).replace(/\D/g,"");
-  return /^\d{3,}$/.test(compact) && !/[a-zа-яіїєґ]/i.test(normalizeSearchText(token));
+  const raw=normalizeSearchText(token);
+  const compact=raw.replace(/\D/g,"");
+  return /^\d{3,}$/.test(compact) && !/[a-zа-яіїєґ]/i.test(raw);
 }
 
 function articleCodeWords(text){
@@ -1931,23 +1919,19 @@ function articleTokenMatchesText(token,text){
 
   const words=articleCodeWords(text);
 
-  // Если введён полный AP-код — только ТОЧНЫЙ артикул.
-  // APMZ0903 не должен находить APMZ0903C, APMZ0905 и т.п.
-  if(q.startsWith("ap")){
-    return words.some(w=>w===q);
+  /* APMZ0903 = только точный APMZ0903. */
+  if(q.startsWith("ap"))return words.some(w=>w===q);
+
+  /* MZ0903 / mz0903 = APMZ0903. */
+  if(/[a-z]/.test(q)&&/\d/.test(q)){
+    if(words.some(w=>w===q||w.includes(q)))return true;
   }
 
-  // Если AP не указан, ищем код как часть артикула:
-  // MZ0903 -> APMZ0903.
-  if(/[a-z]/.test(q) && /\d/.test(q)){
-    if(words.some(w=>w===q || w.includes(q))) return true;
-  }
-
-  // Одна небольшая опечатка допустима только для достаточно длинного кода.
+  /* Небольшая опечатка в длинном коде. */
   if(q.length>=5){
     for(const w of words){
       if(Math.abs(w.length-q.length)>1)continue;
-      if(levenshtein(q,w)<=1)return true;
+      if(damerauLevenshtein(q,w)<=1)return true;
     }
   }
 
@@ -1956,71 +1940,99 @@ function articleTokenMatchesText(token,text){
 
 function numericTokenMatchesText(token,text){
   const q=normalizeSearchText(token).replace(/\D/g,"");
-  if(!q || q.length<3)return false;
-  // Числовой запрос ищем только внутри артикулов,
-  // чтобы "0903" не превращался в поиск годов/количеств/случайных цифр.
+  if(!q||q.length<3)return false;
   return articleCodeWords(text).some(w=>w.includes(q));
 }
 
-function queryTokenMatchesText(token,text){
+function fuzzyWordScore(queryWord,textWord){
+  const q=translitToLatin(queryWord);
+  const t=translitToLatin(textWord);
+  if(!q||!t)return 0;
+
+  if(q===t)return 130;
+  if(t.startsWith(q)||q.startsWith(t))return 105;
+  if(t.includes(q)||q.includes(t))return 90;
+
+  if(q.length<3||t.length<3)return 0;
+
+  const dist=damerauLevenshtein(q,t);
+  const max=q.length<=4?1:q.length<=7?2:3;
+  if(dist<=max){
+    return Math.max(45,88-dist*14);
+  }
+
+  /* Транслитерационная опечатка после 1-й неудачной проверки.
+     Небольшое n-gram-подобное пересечение помогает с "мепзд" -> Mazda,
+     "ришептка" -> решетка, не превращая короткие слова в кашу. */
+  const gramSet=(s)=>{
+    const grams=new Set();
+    for(let i=0;i<s.length-1;i++)grams.add(s.slice(i,i+2));
+    return grams;
+  };
+  const a=gramSet(q),b=gramSet(t);
+  if(!a.size||!b.size)return 0;
+  let common=0;
+  for(const g of a)if(b.has(g))common++;
+  const similarity=(2*common)/(a.size+b.size);
+  if(similarity>=.66 && Math.min(q.length,t.length)>=5){
+    return 40+Math.round(similarity*20);
+  }
+
+  return 0;
+}
+
+function matchWordToValue(queryWord,text){
   const normalized=normalizeSearchText(text);
-  const textTokens=normalized.split(/\s+/).filter(Boolean);
-  const compact=normalized.replace(/\s+/g,"");
+  const textWords=normalized.split(/\s+/).filter(Boolean);
+  const queryForms=expandSearchToken(queryWord);
 
-  if(isArticleLikeToken(token)){
-    return articleTokenMatchesText(token,text);
-  }
+  let best=0;
 
-  if(isNumericSearchToken(token)){
-    return numericTokenMatchesText(token,text);
-  }
+  for(const qForm of queryForms){
+    if(!qForm)continue;
 
-  for(const variant of expandSearchToken(token)){
-    if(!variant)continue;
-    if(compact.includes(variant))return true;
+    /* Сначала семантическое совпадение формы с каждым словом. */
+    for(const w of textWords){
+      const score=fuzzyWordScore(qForm,w);
+      if(score>best)best=score;
+      if(best>=130)return best;
+    }
 
-    for(const word of textTokens){
-      // Автодополнение: "маз", "реш", "решет", "maz" и т.п.
-      if(word.startsWith(variant))return true;
-
-      if(variant.length>=3 && word.length>=3){
-        const distance=levenshtein(variant,word);
-        const maxDistance=variant.length<=4?1:variant.length<=7?2:3;
-        if(distance<=maxDistance)return true;
-      }
+    /* Для составных названий и кодов допускаем совпадение без пробелов. */
+    const compactText=normalized.replace(/\s+/g,"");
+    const compactQ=normalizeSearchText(qForm).replace(/\s+/g,"");
+    if(compactQ && compactText.includes(compactQ)){
+      best=Math.max(best,95);
     }
   }
 
-  return false;
+  return best;
 }
 
 function tokenIsPartType(token){
   const base=normalizeSearchText(token);
+  if(!base)return null;
+
   for(const [name,aliases] of Object.entries(partTypeAliases)){
-    const all=[name,...aliases].map(x=>normalizeSearchText(x)).filter(Boolean);
+    const forms=normalizeAliasForms([name,...aliases]);
 
-    if(all.some(x=>x===base))return name;
+    if(forms.includes(base)||forms.includes(translitToLatin(base)))return name;
 
-    // Префиксный поиск: "реш", "решет", "крыл", "бам"...
-    if(base.length>=2 && all.some(x=>x.length>=base.length && x.startsWith(base))){
+    if(base.length>=2 && forms.some(x=>x.startsWith(base)||translitToLatin(x).startsWith(translitToLatin(base)))){
       return name;
     }
 
-    // Умеренная опечатка для слов длиной от 3 символов.
     if(base.length>=3){
-      const latinBase=translitToLatin(base);
-      for(const x of all){
-        if(x.length<3)continue;
-        for(const candidate of [x,translitToLatin(x)]){
-          const maxDistance=base.length>=7?3:2;
-          if(Math.abs(candidate.length-latinBase.length)<=maxDistance &&
-             levenshtein(latinBase,candidate)<=maxDistance){
-            return name;
-          }
+      const q=translitToLatin(base);
+      for(const candidate of forms){
+        const c=translitToLatin(candidate);
+        if(Math.abs(c.length-q.length)<=3 && damerauLevenshtein(q,c)<=Math.min(3,Math.max(1,Math.floor(q.length/3)))){
+          return name;
         }
       }
     }
   }
+
   return null;
 }
 
@@ -2028,31 +2040,38 @@ function tokenIsBrand(token){
   const base=normalizeSearchText(token);
   if(!base)return null;
 
-  // Для одиночной "м" сохраняем удобный быстрый старт по Mazda.
+  // Удобный однобуквенный старт, который уже использовался в рабочей
+  // версии: "м" начинает поиск Mazda. Для остальных марок ниже нужен
+  // минимум из двух символов, чтобы не превращать обычные слова в марки.
   if(base==="м")return "мазда";
 
-  for(const [brand,aliases] of Object.entries(searchAliases)){
-    const all=[brand,...aliases].map(x=>normalizeSearchText(x)).filter(Boolean);
+  const baseForms=new Set([
+    base,
+    translitToLatin(base),
+    ...keyboardVariants(base).map(normalizeSearchText)
+  ]);
 
-    if(all.some(x=>x===base))return brand;
+  /* Коды MZ/HD/TY тоже являются марками. */
+  for(const [brand,code] of Object.entries(brandCodeMap)){
+    if(baseForms.has(normalizeSearchText(code)))return brand;
+  }
 
-    // Автодополнение марки: "ма", "маз", "maz", "chev"...
-    if(base.length>=2 && all.some(x=>x.length>=base.length && x.startsWith(base))){
-      return brand;
+  for(const [brand,formsSet] of Object.entries(brandSemanticGroups)){
+    for(const form of formsSet){
+      if(baseForms.has(form))return brand;
     }
 
-    // Опечатки в названии марки.
+    /* Автодополнение "ма", "маз", "toy", "toyo" и т.п. */
+    const qLatin=translitToLatin(base);
+    const candidates=[...formsSet].map(translitToLatin).filter(Boolean);
+    if(base.length>=2 && candidates.some(x=>x.startsWith(qLatin)))return brand;
+
+    /* Умеренный fuzzy-режим для опечаток. */
     if(base.length>=3){
-      const latinBase=translitToLatin(base);
-      for(const x of all){
-        if(x.length<3)continue;
-        for(const candidate of [x,translitToLatin(x)]){
-          // Для коротких слов строже, для названий 5+ символов допускаем до 3 ошибок.
-          const maxDistance=base.length>=5?3:2;
-          if(Math.abs(candidate.length-latinBase.length)<=maxDistance &&
-             levenshtein(latinBase,candidate)<=maxDistance){
-            return brand;
-          }
+      for(const candidate of candidates){
+        const max=qLatin.length>=5 ? 3 : (qLatin.length>=3 ? 2 : 1);
+        if(Math.abs(candidate.length-qLatin.length)<=max && damerauLevenshtein(qLatin,candidate)<=max){
+          return brand;
         }
       }
     }
@@ -2061,68 +2080,23 @@ function tokenIsBrand(token){
   return null;
 }
 
-function codePartTypes(value){
-  const result=new Set();
-  const matches=String(value||"").toUpperCase().match(/\bAP[A-Z]{2}\d+\b/g)||[];
-
-  for(const code of matches){
-    const last=code.slice(-1);
-    (partCodeTypes[last]||[]).forEach(x=>result.add(normalizeSearchText(x)));
-  }
-
-  return result;
-}
-
 function brandMatchesValue(brand,value){
   const raw=String(value||"");
-  const text=normalizeSearchText(raw);
+  const normalized=normalizeSearchText(raw);
 
-  const brandNames={
-    мазда:["mazda","мазда"],
-    хонда:["honda","хонда"],
-    тойота:["toyota","тойота"],
-    ниссан:["nissan","ниссан"],
-    форд:["ford","форд"],
-    ауди:["audi","ауди"],
-    бмв:["bmw","бмв"],
-    фольксваген:["volkswagen","фольксваген"],
-    шевроле:["chevrolet","шевроле","chevy"],
-    мерседес:["mercedes","мерседес"],
-    лексус:["lexus","лексус"],
-    инфинити:["infiniti","инфинити"],
-    акура:["acura","акура"],
-    субару:["subaru","субару"],
-    киа:["kia","киа"],
-    хендай:["hyundai","хендай"],
-    опель:["opel","опель"],
-    шкода:["skoda","шкода"],
-    пежо:["peugeot","пежо"],
-    рено:["renault","рено"],
-    фиат:["fiat","фиат"]
-  };
+  /* 1) Прямое название / транслитерация / украинская форма. */
+  const words=normalized.split(/\s+/).filter(Boolean);
+  const forms=[...brandSemanticGroups[brand]||[]];
 
-  const names=[
-    ...(brandNames[brand]||[brand]),
-    ...((searchAliases[brand]||[]).filter(x=>{
-      const t=normalizeSearchText(x);
-      return t.length>=4 && !/^[a-z]{2,4}$/.test(t);
-    }))
-  ];
+  const wordForms=new Set();
+  for(const w of words){
+    wordForms.add(w);
+    wordForms.add(translitToLatin(w));
+  }
+  if(forms.some(f=>wordForms.has(f)))return true;
 
-  const words=text.split(/\s+/).filter(Boolean);
-  if(names.some(name=>{
-    const n=normalizeSearchText(name);
-    return words.includes(n);
-  })) return true;
-
-  const brandCodes={
-    мазда:"MZ", хонда:"HD", тойота:"TY", ниссан:"NS", форд:"FD",
-    ауди:"AU", бмв:"BM", фольксваген:"VW", шевроле:"CH", мерседес:"MB",
-    лексус:"LX", инфинити:"INF", акура:"AC", субару:"SU", киа:"KI",
-    хендай:"HY", опель:"OP", шкода:"SK", пежо:"PG", рено:"REN", фиат:"FT"
-  };
-
-  const code=brandCodes[brand];
+  /* 2) Надёжнее всего для склада — код APXX.... */
+  const code=brandCodeMap[brand];
   if(code){
     const re=new RegExp("\\bAP"+code+"[A-Z0-9]*\\d+\\b","i");
     if(re.test(raw))return true;
@@ -2134,114 +2108,67 @@ function brandMatchesValue(brand,value){
 function partMatchesValue(part,value){
   const types=codePartTypes(value);
 
+  /* Для капота/крыла/бампера используем код последней цифры,
+     когда он есть: это точнее текста. */
   if(types.size){
     const aliases=partTypeAliases[part]||[part];
-    return aliases.some(x=>types.has(normalizeSearchText(x)));
+    const aliasForms=normalizeAliasForms(aliases);
+    if(aliasForms.some(x=>types.has(normalizeSearchText(x)) || types.has(translitToLatin(x))))return true;
   }
 
+  /* Решетка/молдинг и описательные варианты — по тексту. */
   const aliases=partTypeAliases[part]||[part];
-  return aliases.some(x=>queryTokenMatchesText(x,value));
+  return aliases.some(alias=>matchWordToValue(alias,value)>=70);
 }
 
 function searchScore(queryTokens,text){
-  const rawText=String(text||"");
-  const normalizedText=normalizeSearchText(rawText);
-  if(!queryTokens.length || !normalizedText)return 0;
-
   let score=0;
 
   for(const rawToken of queryTokens){
-    const token=normalizeSearchText(rawToken);
-    if(!token)return 0;
+    const brand=tokenIsBrand(rawToken);
+    const part=tokenIsPartType(rawToken);
 
-    const brand=tokenIsBrand(token);
-    const part=tokenIsPartType(token);
-
-    // Марка: сначала проверяем все её реальные названия/синонимы
-    // напрямую. Это делает "мазда" и "Mazda" одинаково надёжными.
     if(brand){
-      const aliases=new Set([
-        brand,
-        ...(searchAliases[brand]||[]),
-        ...((bilingualBrandAliases[brand]||[]))
-      ].map(x=>normalizeSearchText(x)).filter(x=>x && x.length>=2));
-
-      const brandCode={
-        мазда:"mz",хонда:"hd",тойота:"ty",ниссан:"ns",форд:"fd",
-        ауди:"au",бмв:"bm",фольксваген:"vw",шевроле:"ch",мерседес:"mb",
-        лексус:"lx",инфинити:"inf",акура:"ac",субару:"su",киа:"ki",
-        хендай:"hy",опель:"op",шкода:"sk",пежо:"pg",рено:"ren",фиат:"ft"
-      }[brand];
-
-      let matched=false;
-
-      for(const alias of aliases){
-        if(normalizedText.split(/\s+/).includes(alias) ||
-           normalizedText.includes(alias)){
-          matched=true;
-          break;
-        }
-      }
-
-      // Для артикулов дополнительно проверяем код марки:
-      // Mazda -> APMZ..., BMW -> APBM..., etc.
-      if(!matched && brandCode){
-        const re=new RegExp("\\bAP"+brandCode+"[A-Z0-9]*\\b","i");
-        matched=re.test(rawText);
-      }
-
-      if(!matched)return 0;
-      score+=180;
+      if(!brandMatchesValue(brand,text))return 0;
+      score+=260;
       continue;
     }
 
-    // Тип детали: прямые русские/украинские/английские алиасы,
-    // затем уже существующая логика по коду последней цифры.
     if(part){
-      const aliases=new Set([
-        part,
-        ...(partTypeAliases[part]||[]),
-        ...((bilingualPartAliases[part]||[]))
-      ].map(x=>normalizeSearchText(x)).filter(Boolean));
-
-      let matched=false;
-      for(const alias of aliases){
-        if(!alias)continue;
-        if(normalizedText.split(/\s+/).includes(alias) ||
-           normalizedText.includes(alias)){
-          matched=true;
-          break;
-        }
-      }
-
-      if(!matched && partMatchesValue(part,rawText))matched=true;
-      if(!matched)return 0;
-
-      score+=150;
-      continue;
-    }
-
-    // Артикулы и числовые фрагменты остаются строгими.
-    if(isArticleLikeToken(token)){
-      if(!articleTokenMatchesText(token,rawText))return 0;
+      if(!partMatchesValue(part,text))return 0;
       score+=220;
       continue;
     }
 
-    if(isNumericSearchToken(token)){
-      if(!numericTokenMatchesText(token,rawText))return 0;
-      score+=200;
+    if(isArticleLikeToken(rawToken)){
+      if(!articleTokenMatchesText(rawToken,text))return 0;
+      score+=420;
       continue;
     }
 
-    if(queryTokenMatchesText(token,rawText)){
-      score+=80;
-    }else{
-      return 0;
+    if(isNumericSearchToken(rawToken)){
+      if(!numericTokenMatchesText(rawToken,text))return 0;
+      score+=300;
+      continue;
     }
+
+    const tokenScore=matchWordToValue(rawToken,text);
+    if(tokenScore<=0)return 0;
+    score+=tokenScore;
   }
 
   return score;
+}
+function codePartTypes(value){
+  const result=new Set();
+  const matches=String(value||"").toUpperCase().match(/\bAP[A-Z]{2}\d+\b/g)||[];
+
+  for(const code of matches){
+    const last=code.slice(-1);
+    (partCodeTypes[last]||[]).forEach(x=>result.add(normalizeSearchText(x)));
+  }
+
+  return result;
 }
 
 function parseExcelLocations(value){
@@ -3116,219 +3043,7 @@ function showResultOnMap(s,l,n){
   },750);
 }
 
-/* Каскадный поиск: данные производителей/моделей берутся из Excel "кузов весь". */
-const EXCEL_BRANDS = ["Audi","BMW","Cadillac","Chevrolet","Citroen","Daewoo","Dodge","Fiat","Ford","Honda","Hyundai","Jeep","Kia","Lada","Lexus","Mazda","Mercedes","MINI","Mitsubishi","Nissan","Opel","Peugeot","Renault","SEAT","Skoda","Subaru","Tesla","Toyota","Volkswagen","Volvo"];
-const EXCEL_MODELS_BY_BRAND = {"Audi":["100","A1","A4","A4 (B8)","A4 (B9)","A4 (B9) Basic дорест","A4 (B9) S-Line дорест","A4 (B9) дорест","A5/S5","A6","A6 (C7)","A6 (C8)","A8 (D5)","Q5","Q5 (8RB)","Q5 HYBRID","Q7","Q7 (4LB)"],"BMW":["1 series (F40)","3 series (E46) SDN/KB","3 series (E90/E91)","3-series","3-series (F30)","3-series (F31) wagon","5 series (E39)","5 series (E60/E61)","5 series (F10/F11)","5-series","5-series (G30","7 (E65/E66)","7 series (E65/E66)","GT (F07)","X3","X3 (F25)","X5","X5 (E70)","X5 (F15","X5 (F15)","X5 (F15; F85)","X5 (G05) M-Paket","X5 F85"],"Cadillac":["ATS"],"Chevrolet":["AVEO","AVEO (T200)","AVEO HB (T255)","Cruze","CRUZE (J300)","Epica","Epica (KL1_/V250)","LACETTI","Lacetti SDN","MALIBU","VOLT"],"Citroen":["Berlingo","Berlingo (7_)","C-ELYSEE","C-ELYSEE седан (2013 - 2025)","C3","C4","C4 (B7)","C4 / e-Citroen C4"],"Daewoo":["LANOS","MATIZ II","NEXIA","NUBIRA II"],"Dodge":["CHALLENGER","DART","Journey (JC)"],"Fiat":["500 (312)","DOBLO","Doblo (263)","DUCATO","DUCATO (250) GREY","PALIO","PUNTO","PUNTO (199)","TEMPRA","TIPO","UNO"],"Ford":["C-Max","C-MAX (DXA/CB7)","CONNECT","ECOSPORT","EDGE","Escape","Escape St-Line","EXPLORER","Fiesta","Fiesta (ASIA)","FIESTA (JA8)","FIESTA (JHS)","Fiesta VII","Focus","Focus / C-Max","FOCUS C-MAX","Focus II","Focus III","Focus III Wagon","FUSION","Kuga","KUGA / ESCAPE","Mondeo","Mondeo (B4Y/B5Y/BWY)","Mondeo (BA7)","Mondeo LB / KOMBI","MUSTANG","Transit","TRANSIT CONNECT","Transit CUSTOM"],"Honda":["ACCORD","Accord (CP) USA","Accord (CU2)","Accord (USA)","Civic","Civic (HB)","Civic SDN","CIVIC USA","cr-v","CR-V (RM)","CR-V (RW)","FIT","FIT USA","HR-V","PILOT"],"Hyundai":["Accent","ACCENT (MC)","Accent (RB)","Accent/ SOLARIS","Elantra","ELANTRA (CN7)","ELANTRA (CN7) рест","ELANTRA (HD)","ELANTRA USA","GETZ","GETZ (TB)","H100 97 PANEL VAN","I30","iX35","KONA (OS)","Santa Fe (TM)","Santa Fe III","Santa Fe III (DM","Santa Fe IV (TM)","Santa Fe IV (TM) рест","Santa Fe IV рест","SOLARIS","SONATA","Sonata (DN8)","Sonata (LF) rest","TUCSON","TUCSON (NX4)","TUCSON (TL)","TUCSON ix35 (TL)","TUCSON ix35 (TL) рест"],"Jeep":["Cherokee","Compass","GRAND CHEROKEE","Renegade"],"Kia":["CEED","CEED (ED)","NIRO (DE)","Optima","Optima (JF)","PICANTO","Rio","SORENTO","Sorento (UM)","Sorento III (UM)","Sorento IV (MQ4)","SOUL","SOUL USA","Sportage (NQ5)","Sportage (QL)","Sportage (QL) рест","Sportage (SL)"],"LADA":["SAMARA","SAMARA 2108-099"],"Lexus":["ES","LX","RX 350 / 450H"],"Mazda":["3","3 (BL)","3 (BM)","3 (BP)","3 SEDAN","6","6 (GJ","6 (GJ)","CX-30","CX-5","CX-5 (KE)","CX-5 (KF REST)","CX-5 (KF)","CX-7","CX-7 01.6-"],"Mercedes":["C-class (W205)","E-class (W212)","SPRINTER","VIANO/V-KLASSE","VITO","VITO/VIANO"],"MINI":["Countryman (F60)","Countryman (R60)","Countryman S (R60)","S (R55"],"Mitsubishi":["ASX","COLT","l200","L200 (KA_T","Lancer","LANCER (CY)","Lancer X","OUTLANDER","OUTLANDER (CW_W)","OUTLANDER (GG/GF)","Pajero SPORT","SPACE STAR"],"Nissan":["ALMERA","ALTIMA","Juke","JUKE (F15)","Juke (F16)","Leaf","Navarra (D40)","PATHFINDER (R52)","PRIMERA","Qashqai","QASHQAI (J10)","qashqai (j11)","ROGUE","Rogue (T32)","ROGUE / X-TRAIL (T32U)","ROGUE SPORT","Rogue(T33)","X-Trail"],"Opel":["ASTRA","Astra H","Astra H 5-D","ASTRA H 5D","ASTRA H KB","ASTRA/CORSA/VECTRA","Corsa","Corsa / COMBO","CORSA D","Corsa E","INSIGNIA","INSIGNIA (G09)","KADETT E","Zafira"],"Peugeot":["206","206+","207 (W)","301","307","308","407"],"Renault":["CAPTUR","Clio","CLIO HB","Clio II","CLIO III (R0/1)","CLIO IV","Duster","FLUENCE","Kangoo","Master","MEGANE","MEGANE II (M)","MEGANE IV","SYMBOL / LOGAN","Trafic"],"Seat":["ALHAMBRA"],"Skoda":["Fabia","FABIA (542","FABIA (6Y)","FABIA (NJ3","Fabia II","FABIA II/ROOMSTER","Fabia III","Fabia IV (PJ)","KODIAK","Kodiaq","Octavia","OCTAVIA (1U)","OCTAVIA (1Z)","Octavia II","Octavia III (5E)","OCTAVIA TOUR (1U2)","Rapid","Rapid (NH)","Superb","Superb (3V)","YETI"],"Subaru":["CROSSTRACK XV (GP)","CROSSTRACK XV (GT)","Forester","FORESTER (SH)","FORESTER (SJ)","Forester (SK REST)","Impreza","IMPREZA (GP)","IMPREZA (GT)","Legacy","LEGACY (B14)","Outback"],"Tesla":["MODEL 3"],"Toyota":["AURION","Auris","Avensis","C-HR","C-HR (_X1_)","Camry","CAMRY (V40)","CAMRY (XV50)","Camry (XV70)","CAMRY (XV70) LE/XLE","CAMRY (XV70) SE","CAMRY (XV70) SE/XSE","Camry (XV70) SE\\XSE","CAMRY (XV70) XSE","Corolla","Corolla (E14)","COROLLA (E18)","COROLLA (E21)","Corolla (E210)","LAND CRUISER","LAND CRUISER 100","Prius","PRIUS (W50)","RAV 4","RAV4","RAV4 (XA40)","RAV4 (XA50)","SIENNA (XL40)","Yaris","Yaris (XP90) HB","Yaris HB"],"Volkswagen":["AMAROK","AMAROK (2H)","Caddy","CADDY II","Caddy III / LIFE","CADDY IV/LIFE","CADDY/Volkswagen TOURAN","CC","Golf","Golf IV","Golf MK8","GOLF Sportsvan","GOLF V PLUS","Golf VI","Golf VII","GOLF VIII","Golf Ⅵ","Jetta","Jetta / Golf KB","Jetta USA (A7)","MULTIVAN (T5)","Passat (B6)","Passat (B7)","Passat (B8)","PASSAT B6","Passat B8","Passat CC (357)","PASSAT USA","Polo","Polo (6R)","POLO (9N3)","SHARAN","Skoda","T-ROC","TIGUAN","TIGUAN (5N)","Touareg","TOUAREG (7P5)","TOURAN","TOURAN (1T2)","TRANSPORTER T6 (SGA)"],"Volvo":["XC90"]};
-
-const CASCADE_PART_TYPES = [
-  {value:"hood", label:"Капот"},
-  {value:"wing", label:"Крыло"},
-  {value:"bumper", label:"Бампер"},
-  {value:"grille", label:"Решётка"},
-  {value:"molding", label:"Молдинг"},
-  {value:"other", label:"Другое"}
-];
-
-function cascadeNormalize(value){
-  return String(value||"")
-    .toLowerCase()
-    .replace(/ё/g,"е")
-    .replace(/й/g,"и")
-    .replace(/[^a-zа-яіїєґ0-9]+/g," ")
-    .trim();
-}
-
-function cascadeBrandMatchesLine(brand,line){
-  const text=String(line||"");
-  const b=cascadeNormalize(brand);
-  const t=cascadeNormalize(text);
-  if(!b || !t)return false;
-  return t.split(/\s+/).includes(b);
-}
-
-function cascadeModelMatchesLine(brand,model,line){
-  if(!model)return true;
-  const text=String(line||"");
-  const brandRe=new RegExp("(^|\\s)"+String(brand).replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+"(?![A-Za-zА-Яа-я])","i");
-  const bm=text.match(brandRe);
-  const tail=bm ? text.slice((bm.index||0)+bm[0].length) : text;
-  const normalizedModel=cascadeNormalize(model);
-  const normalizedTail=cascadeNormalize(tail);
-
-  if(!normalizedModel)return true;
-
-  // Числовые модели (например Mazda 3) проверяем как отдельный токен,
-  // чтобы "3" не совпадало с годом 2013/2023.
-  if(/^\d+$/.test(normalizedModel)){
-    return normalizedTail.split(/\s+/).some(x=>x===normalizedModel);
-  }
-
-  // Сначала точное совпадение с названием модели, затем компактный вариант
-  // для записей вроде "CX-5 (KF)".
-  if(normalizedTail.includes(normalizedModel))return true;
-  const compactModel=normalizedModel.replace(/\s+/g,"");
-  const compactTail=normalizedTail.replace(/\s+/g,"");
-  return compactTail.includes(compactModel);
-}
-
-function cascadePartType(line){
-  const t=cascadeNormalize(line);
-
-  if(/\bкапот\b|\bhood\b|\bbonnet\b/.test(t)) return "hood";
-  if(/\bкрыло\b|\bкрило\b|\bleft wing\b|\bright wing\b|\bfender\b/.test(t)) return "wing";
-  if(/\bбампер\b|\bбамперу\b|\bбампером\b|\bbumper\b/.test(t)) return "bumper";
-  if(/\bрешетка\b|\bрешітка\b|\bрешетки\b|\bрешітки\b|\bgrille\b/.test(t)) return "grille";
-  if(/\bмолдинг\b|\bмолдинги\b|\bмолдингами\b|\bmolding\b|\bmoulding\b/.test(t)) return "molding";
-  return "other";
-}
-
-function cascadeArticleCodes(rows,brand,model,type){
-  const set=new Set();
-
-  for(const row of rows){
-    if(!cascadeBrandMatchesLine(brand,row.line))continue;
-    if(model && !cascadeModelMatchesLine(brand,model,row.line))continue;
-    if(type && cascadePartType(row.line)!==type)continue;
-
-    const codes=String(row.line||"").toUpperCase().match(/\bAP[A-Z]{2}\d+\b/g)||[];
-    for(const code of codes)set.add(code);
-  }
-
-  return [...set].sort((a,b)=>a.localeCompare(b,"en",{numeric:true}));
-}
-
-function fillCascadeSelect(select,placeholder,items,disabled=false){
-  if(!select)return;
-  select.innerHTML="";
-  const first=document.createElement("option");
-  first.value="";
-  first.textContent=placeholder;
-  select.appendChild(first);
-
-  for(const item of items){
-    const opt=document.createElement("option");
-    if(typeof item==="string"){
-      opt.value=item;
-      opt.textContent=item;
-    }else{
-      opt.value=item.value;
-      opt.textContent=item.label;
-    }
-    select.appendChild(opt);
-  }
-  select.disabled=disabled;
-}
-
-function cascadeFilteredRows(rows,brand,type,query){
-  const q=String(query||"").trim();
-  const tokens=searchTokens(q);
-
-  return rows.filter(row=>{
-    if(brand && !cascadeBrandMatchesLine(brand,row.line))return false;
-    if(type && cascadePartType(row.line)!==type)return false;
-
-    // Артикул/номер ищется только через основную строку поиска.
-    // Если строка пустая — показываем всё, что подходит под фильтры.
-    if(tokens.length && searchScore(tokens,row.line)<=0)return false;
-    return true;
-  });
-}
-
-function renderCascadeResults(found){
-  const out=document.getElementById("results");
-  if(!out)return;
-
-  if(!found.length){
-    out.innerHTML='<div class="search-results-head">Ничего не найдено</div>';
-    renderMiniMap([]);
-    return;
-  }
-
-  out.innerHTML=`<div class="search-results-head">Найдено: ${found.length}</div>`+
-    found.map((x,i)=>{
-      const safeA=escapeHtml(x.a);
-      const safeLine=escapeHtml(x.line);
-      return `<div class="search-result-row" data-index="${i}">`+
-        `<div class="search-result-info"><strong>${safeA}</strong><span class="article">${safeLine}</span></div>`+
-        `<button type="button" class="search-result-map-btn" data-search-map="${i}">🗺️ На карте</button>`+
-        `</div>`;
-    }).join("");
-
-  out.querySelectorAll(".search-result-row").forEach((el,i)=>{
-    el.addEventListener("click",()=>{
-      const x=found[i];
-      if(x)activateMapTarget(`plan-marker-${x.s}-${x.l}-${x.n}`);
-    });
-  });
-
-  out.querySelectorAll("[data-search-map]").forEach(btn=>{
-    btn.addEventListener("click",e=>{
-      e.stopPropagation();
-      const x=found[Number(btn.dataset.searchMap)];
-      if(x)activateMapTarget(`plan-marker-${x.s}-${x.l}-${x.n}`);
-    });
-  });
-
-  renderMiniMap(found);
-}
-
-function initCascadeSearch(){
-  const brand=document.getElementById("searchBrand");
-  const type=document.getElementById("searchPartType");
-  const clear=document.getElementById("clearSearchFilters");
-  if(!brand||!type)return;
-
-  // Только производители, реально присутствующие в Excel.
-  fillCascadeSelect(brand,"Производитель",EXCEL_BRANDS.map(x=>({value:x,label:x})),false);
-  fillCascadeSelect(type,"Тип детали",CASCADE_PART_TYPES,false);
-
-  brand.addEventListener("change",()=>filterByCascade());
-  type.addEventListener("change",()=>filterByCascade());
-
-  clear?.addEventListener("click",()=>{
-    brand.value="";
-    type.value="";
-    const input=document.getElementById("search");
-    if(input)input.value="";
-    doSearch();
-  });
-
-  window.refreshCascadeSearch=()=>{
-    fillCascadeSelect(brand,"Производитель",EXCEL_BRANDS.map(x=>({value:x,label:x})),false);
-    fillCascadeSelect(type,"Тип детали",CASCADE_PART_TYPES,false);
-  };
-}
-
-function filterByCascade(){
-  const brand=document.getElementById("searchBrand")?.value||"";
-  const type=document.getElementById("searchPartType")?.value||"";
-  const query=document.getElementById("search")?.value||"";
-
-  // Без фильтров полностью сохраняем старый поиск.
-  if(!brand&&!type){
-    doSearch();
-    return;
-  }
-
-  const rows=allWarehouseLinesForCascade();
-  const filtered=cascadeFilteredRows(rows,brand,type,query);
-
-  const found=filtered.map(row=>({
-    ...row,
-    a:row.address,
-    v:row.line,
-    matchedLines:[row.line],
-    score:300
-  }));
-
-  found.sort((a,b)=>{
-    const ac=String(a.line).localeCompare(String(b.line),"en",{numeric:true,sensitivity:"base"});
-    if(ac!==0)return ac;
-    return String(a.a).localeCompare(String(b.a),"en",{numeric:true});
-  });
-
-  renderCascadeResults(found);
-}
+const searchCollator=new Intl.Collator(["ru","uk","en"],{usage:"sort",sensitivity:"base",numeric:true});
 
 function doSearch(){
   const raw=document.getElementById("search").value.trim();
@@ -3386,7 +3101,13 @@ function doSearch(){
     }
   }
 
-  found.sort((a,b)=>b.score-a.score);
+  found.sort((a,b)=>{
+    const scoreDiff=b.score-a.score;
+    if(scoreDiff)return scoreDiff;
+    const aText=(a.matchedLines?.join(" ")||a.v||a.a||"");
+    const bText=(b.matchedLines?.join(" ")||b.v||b.a||"");
+    return searchCollator.compare(aText,bText);
+  });
 
   if(!found.length){
     out.innerHTML='<div class="result">Ничего не найдено.</div>';
@@ -3431,10 +3152,7 @@ searchInput.addEventListener("input",()=>{
   // Поиск работает только по уже загруженному в память data.
   // Firebase write/read здесь вообще не вызывается.
   render();
-  const brand=document.getElementById("searchBrand")?.value||"";
-  const type=document.getElementById("searchPartType")?.value||"";
-  if(brand||type) filterByCascade();
-  else doSearch();
+  doSearch();
 
   const restoreSearchPosition = ()=>{
     const currentTop = searchInput.getBoundingClientRect().top;
@@ -3478,11 +3196,6 @@ rootRef.on("value",async snap=>{
 },err=>{setSync("⚠️ Ошибка Firebase","err");console.error(err)});
 
 render();renderSpecial();renderMiniMap([]);initHistoryUi();setAccessUi();
-
-try{
-  if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",()=>initCascadeSearch());
-  else initCascadeSearch();
-}catch(e){console.warn("Cascade search init failed:",e);}
 </script>
 
 <div id="appToast" class="app-toast"></div>
