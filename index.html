@@ -354,7 +354,31 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
 }
 </style>
 <style>/* Excel import UI */.excel-modal{position:fixed;inset:0;background:rgba(0,0,0,.58);display:none;align-items:center;justify-content:center;padding:16px;z-index:10050}.excel-dialog{background:#fff;border-radius:16px;width:min(620px,100%);max-height:88vh;overflow:auto;box-shadow:0 18px 60px #0007;padding:20px;color:var(--ink)}.excel-head{display:flex;align-items:flex-start;gap:12px;margin-bottom:16px}.excel-icon{width:42px;height:42px;flex:0 0 42px;border-radius:11px;background:#eaf2ff;color:#1f6feb;display:flex;align-items:center;justify-content:center;font-size:21px}.excel-head h2{margin:0 0 4px;font-size:20px}.excel-file{font-size:12px;color:var(--muted);overflow-wrap:anywhere}.excel-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0}.excel-stat{background:#f6f8fa;border:1px solid #e0e5ea;border-radius:10px;padding:11px}.excel-stat b{display:block;font-size:18px;margin-bottom:2px}.excel-stat span{font-size:11px;color:var(--muted)}.excel-section{margin-top:14px}.excel-section-title{font-size:13px;font-weight:700;margin-bottom:7px}.excel-preview{background:#f7f9fb;border:1px solid #dce3e9;border-radius:10px;padding:9px;max-height:150px;overflow:auto;font-size:12px}.excel-preview-row{padding:7px 4px;border-bottom:1px solid #e3e8ed}.excel-preview-row:last-child{border-bottom:0}.excel-preview-row strong{color:#1264d8;margin-right:7px}.excel-warn{background:#fff8e7;border:1px solid #f2d38a;color:#805b00;border-radius:10px;padding:10px;font-size:12px}.excel-error{background:#fff0f0;border:1px solid #f2b8b8;color:#9b1c1c;border-radius:10px;padding:11px;font-size:13px}.excel-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}.excel-actions button{min-width:105px}.excel-primary{background:var(--accent)!important;color:#fff!important;border-color:var(--accent)!important}.excel-success-icon{background:#eaf8ed;color:#2e7d46}.excel-error-icon{background:#fff0f0;color:#b42318}.excel-close{margin-left:auto;border:0;background:transparent;font-size:24px;line-height:1;color:#66717d;padding:0 4px}.excel-close:hover{background:#f1f3f5}@media(max-width:520px){.excel-dialog{padding:16px}.excel-stats{grid-template-columns:1fr 1fr}.excel-stat:last-child{grid-column:1/-1}.excel-actions{flex-direction:column-reverse}.excel-actions button{width:100%}}</style>
-<style id="app-upgrades">:root{--nav-h:64px}.app-userbar{margin-top:8px}.role-badge{display:inline-flex;align-items:center;gap:5px;background:#ffffff18;border:1px solid #ffffff2e;border-radius:999px;padding:5px 9px;font-size:12px;color:#fff}.app-toast{position:fixed;left:50%;bottom:calc(76px + env(safe-area-inset-bottom));transform:translate(-50%,14px);opacity:0;pointer-events:none;z-index:120000;background:#17212b;color:#fff;border-radius:12px;padding:10px 14px;box-shadow:0 8px 28px #0005;font-size:13px;font-weight:700;transition:.18s ease;max-width:calc(100% - 28px);text-align:center}.app-toast.show{opacity:1;transform:translate(-50%,0)}body.dark{--bg:#0f1419;--card:#171e25;--ink:#edf2f7;--muted:#9ca9b5;--empty:#202a33;--border:#394754}body.dark input,body.dark button,body.dark textarea,body.dark .dialog,body.dark .result,body.dark .search-result-row,body.dark .street,body.dark .special-box,body.dark .mini-map-wrap,body.dark .history-entry,body.dark .special-cell{background:#171e25;color:var(--ink);border-color:#394754}body.dark .shelf{background:#151c22;border-color:#46535f}body.dark .shelf-title{background:#222c35;color:#edf2f7}body.dark .item-meta,body.dark .search-result-map-btn{background:#202a33;color:var(--ink);border-color:#46535f}.bottom-nav{display:none}@media(max-width:700px){body{padding-bottom:calc(66px + env(safe-area-inset-bottom))}.bottom-nav{position:fixed;display:grid;grid-template-columns:repeat(5,1fr);left:0;right:0;bottom:0;z-index:110000;padding:7px 6px calc(7px + env(safe-area-inset-bottom));background:#17212bf5;backdrop-filter:blur(10px);box-shadow:0 -4px 18px #0003}.bottom-nav button{border:0;background:transparent;color:#fff;padding:6px 2px;border-radius:10px;font-size:10px;line-height:1.1;min-width:0}.bottom-nav button span{display:block;font-size:18px;margin-bottom:3px}.bottom-nav button:active{transform:scale(.95)}#historyModal{padding:0}#historyModal .dialog{width:100%;height:100%;max-height:none;border-radius:0;padding:14px}.history-toolbar{position:sticky;top:-14px;background:var(--card);padding:10px 0;z-index:2}}</style></head>
+
+<style id="app-upgrades">
+.app-userbar{margin-top:8px}
+.role-badge{display:inline-flex;align-items:center;gap:5px;background:#ffffff18;border:1px solid #ffffff2e;border-radius:999px;padding:5px 9px;font-size:12px;color:#fff}
+.app-toast{position:fixed;left:50%;bottom:calc(76px + env(safe-area-inset-bottom));transform:translate(-50%,14px);opacity:0;pointer-events:none;z-index:120000;background:#17212b;color:#fff;border-radius:12px;padding:10px 14px;box-shadow:0 8px 28px #0005;font-size:13px;font-weight:700;transition:.18s ease;max-width:calc(100% - 28px);text-align:center}
+.app-toast.show{opacity:1;transform:translate(-50%,0)}
+body.dark{--bg:#0f1419;--card:#171e25;--ink:#edf2f7;--muted:#9ca9b5;--empty:#202a33;--border:#394754}
+body.dark input,body.dark button,body.dark textarea,body.dark .dialog,body.dark .result,body.dark .search-result-row,body.dark .street,body.dark .special-box,body.dark .mini-map-wrap,body.dark .history-entry,body.dark .special-cell{background:#171e25;color:var(--ink);border-color:#394754}
+body.dark .shelf{background:#151c22;border-color:#46535f}
+body.dark .shelf-title{background:#222c35;color:#edf2f7}
+body.dark .item-meta,body.dark .search-result-map-btn{background:#202a33;color:var(--ink);border-color:#46535f}
+.bottom-nav{display:none}
+@media(max-width:700px){
+  body{padding-bottom:calc(66px + env(safe-area-inset-bottom))}
+  .bottom-nav{position:fixed;display:grid;grid-template-columns:repeat(5,1fr);left:0;right:0;bottom:0;z-index:110000;padding:7px 6px calc(7px + env(safe-area-inset-bottom));background:#17212bf5;backdrop-filter:blur(10px);box-shadow:0 -4px 18px #0003}
+  .bottom-nav button{border:0;background:transparent;color:#fff;padding:6px 2px;border-radius:10px;font-size:10px;line-height:1.1;min-width:0}
+  .bottom-nav button span{display:block;font-size:18px;margin-bottom:3px}
+  .bottom-nav button:active{transform:scale(.95)}
+  #historyModal{padding:0}
+  #historyModal .dialog{width:100%;height:100%;max-height:none;border-radius:0;padding:14px}
+  .history-toolbar{position:sticky;top:-14px;background:var(--card);padding:10px 0;z-index:2}
+}
+</style>
+
+</head>
 <body>
 
 <div id="loginScreen" style="
@@ -586,6 +610,14 @@ function initFirebase(){
   }
 }
 
+function isCapacitorApp(){
+  try{
+    return !!window.Capacitor?.isNativePlatform?.();
+  }catch(e){
+    return false;
+  }
+}
+
 async function loginWithGoogle(){
   const el=document.getElementById("loginError");
   if(el){el.style.display="none";el.textContent="";}
@@ -600,32 +632,50 @@ async function loginWithGoogle(){
 
   setLoginBusy(true);
   try{
-    // Сначала обычное всплывающее окно. Оно лучше работает на Android и ПК.
-    await auth.signInWithPopup(provider);
+    if(isCapacitorApp()){
+      // Android: настоящий нативный Google Sign-In.
+      // skipNativeAuth=true оставляет вход Firebase под контролем Web SDK,
+      // а useCredentialManager=false — тот режим, который у нас уже работал.
+      const plugin=window.Capacitor?.Plugins?.FirebaseAuthentication;
+      if(!plugin || typeof plugin.signInWithGoogle!=="function"){
+        throw new Error("Плагин FirebaseAuthentication не найден в приложении.");
+      }
+
+      const result=await plugin.signInWithGoogle({
+        skipNativeAuth:true,
+        useCredentialManager:false
+      });
+
+      const idToken=result?.credential?.idToken;
+      if(!idToken){
+        throw new Error("Google не вернул ID-токен.");
+      }
+
+      const credential=window.firebase.auth.GoogleAuthProvider.credential(idToken);
+      await auth.signInWithCredential(credential);
+    }else{
+      // Браузер: оставляем рабочий web-вход через popup.
+      // Redirect здесь специально НЕ используется.
+      await auth.signInWithPopup(provider);
+    }
   }catch(error){
     console.error("Google login error:",error);
 
-    // Если браузер заблокировал popup, пробуем redirect-вход.
-    if(error?.code === "auth/popup-blocked" || error?.code === "auth/popup-cancelled-by-user"){
-      try{
-        await auth.signInWithRedirect(provider);
-        return;
-      }catch(redirectError){
-        console.error("Google redirect error:",redirectError);
-        error=redirectError;
-      }
+    let msg=error?.message||"Неизвестная ошибка входа.";
+    if(error?.code==="auth/unauthorized-domain"){
+      msg="Домен сайта не разрешён в Firebase → Authentication → Settings → Authorized domains.";
+    }else if(error?.code==="auth/popup-blocked"){
+      msg="Браузер заблокировал окно Google. Разрешите всплывающие окна для сайта.";
+    }else if(error?.code==="auth/popup-closed-by-user"){
+      msg="Окно Google было закрыто до завершения входа.";
+    }else if(error?.code==="auth/operation-not-allowed"){
+      msg="В Firebase не включён вход через Google.";
+    }else if(error?.code==="auth/network-request-failed"){
+      msg="Ошибка сети. Проверьте интернет-соединение.";
+    }else if(error?.message?.includes("Account reauth failed")){
+      msg="Google не смог повторно подтвердить аккаунт. Попробуйте выбрать аккаунт ещё раз.";
     }
 
-    let msg=error?.message||"Неизвестная ошибка входа.";
-    if(error?.code === "auth/unauthorized-domain"){
-      msg="Домен hlebish.github.io не разрешён в Firebase → Authentication → Settings → Authorized domains.";
-    }else if(error?.code === "auth/popup-closed-by-user"){
-      msg="Окно Google было закрыто. Нажмите кнопку ещё раз.";
-    }else if(error?.code === "auth/operation-not-allowed"){
-      msg="В Firebase не включён вход через Google.";
-    }else if(error?.code === "auth/network-request-failed"){
-      msg="Ошибка сети. Проверьте интернет-соединение.";
-    }
     showLoginError("Ошибка входа: "+msg);
   }finally{
     setLoginBusy(false);
@@ -633,12 +683,50 @@ async function loginWithGoogle(){
 }
 window.loginWithGoogle=loginWithGoogle;
 
-function haptic(duration){try{if("vibrate" in navigator)navigator.vibrate(duration||9)}catch(e){}}
-function showAppToast(message){let el=document.getElementById("appToast");if(!el){el=document.createElement("div");el.id="appToast";el.className="app-toast";document.body.appendChild(el)}el.textContent=message;el.classList.add("show");clearTimeout(window.__toastTimer);window.__toastTimer=setTimeout(()=>el.classList.remove("show"),1800)}
-function focusAppSearch(){const x=document.getElementById("search");if(x){x.focus({preventScroll:true});x.scrollIntoView({behavior:"smooth",block:"start"})}}
-function scrollToMap(){const x=document.getElementById("miniMapWrap")||document.querySelector(".map");if(x)x.scrollIntoView({behavior:"smooth",block:"start"})}
-function toggleDarkTheme(){const dark=!document.body.classList.contains("dark");document.body.classList.toggle("dark",dark);localStorage.setItem("warehouseDarkTheme",dark?"1":"0");const b=document.getElementById("themeNavBtn");if(b)b.innerHTML=dark?"<span>☀️</span>Светлая":"<span>🌙</span>Тёмная";haptic(12)}
-(function(){if(localStorage.getItem("warehouseDarkTheme")==="1")document.body.classList.add("dark")})();
+
+<script id="appHelpers">
+function haptic(duration){
+  try{if("vibrate" in navigator)navigator.vibrate(duration||9)}catch(e){}
+}
+function showAppToast(message){
+  let el=document.getElementById("appToast");
+  if(!el){
+    el=document.createElement("div");
+    el.id="appToast";
+    el.className="app-toast";
+    document.body.appendChild(el);
+  }
+  el.textContent=message;
+  el.classList.add("show");
+  clearTimeout(window.__toastTimer);
+  window.__toastTimer=setTimeout(()=>el.classList.remove("show"),1800);
+}
+function focusAppSearch(){
+  const x=document.getElementById("search");
+  if(x){
+    x.focus({preventScroll:true});
+    x.scrollIntoView({behavior:"smooth",block:"start"});
+  }
+}
+function scrollToMap(){
+  const x=document.getElementById("miniMapWrap")||document.querySelector(".map");
+  if(x)x.scrollIntoView({behavior:"smooth",block:"start"});
+}
+function toggleDarkTheme(){
+  const dark=!document.body.classList.contains("dark");
+  document.body.classList.toggle("dark",dark);
+  localStorage.setItem("warehouseDarkTheme",dark?"1":"0");
+  const b=document.getElementById("themeNavBtn");
+  if(b)b.innerHTML=dark?"<span>☀️</span>Светлая":"<span>🌙</span>Тёмная";
+  haptic(12);
+}
+(function(){
+  if(localStorage.getItem("warehouseDarkTheme")==="1"){
+    document.body.classList.add("dark");
+  }
+})();
+</script>
+
 const firebaseStarted=initFirebase();
 
 // Не используем inline onclick: обработчик назначается напрямую после загрузки страницы.
@@ -730,12 +818,42 @@ function formatDate(ts){
 function currentUserEmail(){return auth.currentUser?.email||"неизвестно";}
 
 const ADMIN_EMAILS=["glebur172@gmail.com"];
-const EDITOR_EMAILS=["glebur172@gmail.com","mashakashner2002@gmail.com","motroyl@gmail.com","hlebish7@gmail.com"];
-function currentUserRole(){const email=String(auth.currentUser?.email||"").toLowerCase();if(ADMIN_EMAILS.includes(email))return "admin";if(EDITOR_EMAILS.includes(email))return "editor";return "viewer";}
-function roleLabel(role){return ({admin:"👑 Администратор",editor:"🛠️ Редактор",viewer:"👁️ Просмотр"})[role]||"👁️ Просмотр";}
-function canEdit(){const r=currentUserRole();return r==="admin"||r==="editor";}
-function canAdmin(){return currentUserRole()==="admin";}
-function setAccessUi(){const editable=canEdit(),admin=canAdmin();document.querySelectorAll("[data-edit-only]").forEach(el=>el.style.display=editable?"":"none");document.querySelectorAll("[data-admin-only]").forEach(el=>el.style.display=admin?"":"none");const badge=document.getElementById("roleBadge");if(badge){const role=currentUserRole(),email=String(auth.currentUser?.email||"");badge.textContent=roleLabel(role)+(email?" · "+email:"");badge.title=email;}}
+const EDITOR_EMAILS=[
+  "glebur172@gmail.com",
+  "mashakashner2002@gmail.com",
+  "motroyl@gmail.com",
+  "hlebish7@gmail.com"
+];
+
+function currentUserRole(){
+  const email=String(auth.currentUser?.email||"").toLowerCase();
+  if(ADMIN_EMAILS.includes(email))return "admin";
+  if(EDITOR_EMAILS.includes(email))return "editor";
+  return "viewer";
+}
+function roleLabel(role){
+  return ({admin:"👑 Администратор",editor:"🛠️ Редактор",viewer:"👁️ Просмотр"})[role]||"👁️ Просмотр";
+}
+function canEdit(){
+  const role=currentUserRole();
+  return role==="admin"||role==="editor";
+}
+function canAdmin(){
+  return currentUserRole()==="admin";
+}
+function setAccessUi(){
+  const editable=canEdit();
+  const admin=canAdmin();
+  document.querySelectorAll("[data-edit-only]").forEach(el=>el.style.display=editable?"":"none");
+  document.querySelectorAll("[data-admin-only]").forEach(el=>el.style.display=admin?"":"none");
+  const badge=document.getElementById("roleBadge");
+  if(badge){
+    const role=currentUserRole();
+    const email=String(auth.currentUser?.email||"");
+    badge.textContent=roleLabel(role)+(email?" · "+email:"");
+    badge.title=email;
+  }
+}
 
 function recordMetaChanges(addr,oldValue,newValue){
   const oldLines=new Set(linesOf(oldValue));
@@ -814,7 +932,15 @@ function renderHistory(){
     return hay.includes(q);
   });
 
-  const summary=document.getElementById("historySummary");if(summary){const c={move:0,add:0,remove:0,edit:0,import:0,clear:0};allHistory.forEach(x=>{const k=x.type==="importExcel"?"import":x.type;if(c[k]!=null)c[k]++});summary.textContent=allHistory.length+" событий · 📦 "+c.move+" перемещений · ➕ "+c.add+" добавлений · ✏️ "+c.edit+" изменений";}
+  const summary=document.getElementById("historySummary");
+  if(summary){
+    const c={move:0,add:0,remove:0,edit:0,import:0,clear:0};
+    allHistory.forEach(x=>{
+      const k=x.type==="importExcel"?"import":x.type;
+      if(c[k]!=null)c[k]++;
+    });
+    summary.textContent=allHistory.length+" событий · 📦 "+c.move+" перемещений · ➕ "+c.add+" добавлений · ✏️ "+c.edit+" изменений";
+  }
 
   if(!items.length){
     list.innerHTML='<div class="result">История по заданным условиям пуста.</div>';
@@ -2506,7 +2632,10 @@ async function importExcelFile(file){
   });
 })();
 
-document.addEventListener("click",e=>{const t=e.target.closest("button,.cell,.search-result-row,.special-cell");if(t&&!t.dataset.noHaptic)haptic(7)});
+document.addEventListener("click",e=>{
+  const t=e.target.closest("button,.cell,.search-result-row,.special-cell");
+  if(t&&!t.dataset.noHaptic)haptic(7);
+});
 document.getElementById("excelFile").addEventListener("change",async e=>{
   const file=e.target.files?.[0];
   e.target.value="";
@@ -2909,5 +3038,15 @@ rootRef.on("value",async snap=>{
 
 render();renderSpecial();renderMiniMap([]);initHistoryUi();setAccessUi();
 </script>
-<div id="appToast" class="app-toast"></div><nav class="bottom-nav" id="bottomNav"><button onclick="focusAppSearch();haptic()"><span>🔎</span>Поиск</button><button onclick="scrollToMap();haptic()"><span>🗺️</span>Карта</button><button onclick="window.scrollTo({top:0,behavior:'smooth'});haptic()"><span>📦</span>Склад</button><button onclick="openHistory();haptic()"><span>🕘</span>История</button><button id="themeNavBtn" onclick="toggleDarkTheme()"><span>🌙</span>Тёмная</button></nav></body>
+
+<div id="appToast" class="app-toast"></div>
+<nav class="bottom-nav" id="bottomNav">
+  <button onclick="focusAppSearch();haptic()"><span>🔎</span>Поиск</button>
+  <button onclick="scrollToMap();haptic()"><span>🗺️</span>Карта</button>
+  <button onclick="window.scrollTo({top:0,behavior:'smooth'});haptic()"><span>📦</span>Склад</button>
+  <button onclick="openHistory();haptic()"><span>🕘</span>История</button>
+  <button id="themeNavBtn" onclick="toggleDarkTheme()"><span>🌙</span>Тёмная</button>
+</nav>
+
+</body>
 </html>
