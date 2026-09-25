@@ -1,4 +1,3 @@
-```
 <!doctype html>
 <html lang="ru">
 <head>
@@ -30,6 +29,8 @@ main{padding:12px;max-width:1500px;width:100%;margin:auto;overflow:hidden}
 .stats{margin:10px 0;color:var(--muted);font-size:13px}
 #modal,#specialModal{position:fixed;inset:0;background:#0007;display:none;align-items:center;justify-content:center;padding:16px;z-index:20}
 #specialModal{z-index:30}.dialog{background:white;border-radius:14px;width:min(520px,100%);padding:18px;box-shadow:0 10px 40px #0005}
+#modal .dialog{max-height:calc(100vh - 32px);overflow-y:auto;overflow-x:hidden}
+#modal .item-meta{max-height:220px;overflow-y:auto}
 .dialog h2{margin-top:0}.addr{font-family:monospace;color:var(--accent);font-weight:700}
 label{display:block;font-size:13px;font-weight:700;margin:13px 0 6px}
 textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--border);border-radius:8px;padding:10px;font:inherit}
@@ -162,13 +163,18 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
 #moveModal .move-grid select{width:100%}
 #moveModal .move-detail{margin-top:12px}
 #moveModal .move-detail select{width:100%}
+@media(max-width:520px){
+  #modal .dialog{max-height:calc(100dvh - 24px);padding:14px}
+  #modal .item-meta{max-height:200px}
+}
 @media(max-width:600px){
   #moveModal .move-grid{grid-template-columns:1fr 1fr}
   #moveModal .move-detail{grid-column:1/-1}
 }
 .history-entry .history-move{font-weight:700;color:#1f6feb}.history-entry .history-add{color:#2e6b3b;font-weight:700}.history-entry .history-remove{color:#b42318;font-weight:700}
-#historyModal{position:fixed;inset:0;background:#0007;display:none;align-items:center;justify-content:center;padding:16px;z-index:40}
-#historyModal .dialog{width:min(760px,100%);max-height:85vh;overflow:auto}
+#historyModal{position:fixed;inset:0;background:#0007;display:none;align-items:center;justify-content:center;padding:16px;z-index:10020}
+#historyModal .dialog{width:min(760px,100%);max-height:calc(100vh - 32px);overflow:auto}
+.history-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}.history-head h2{margin:0}.history-close{flex:0 0 auto;width:40px;height:40px;padding:0;border:1px solid var(--border);border-radius:10px;background:var(--card);color:var(--ink);font-size:28px;line-height:1;display:flex;align-items:center;justify-content:center}.history-close:hover{background:#f1f3f5}
 .history-toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
 .history-toolbar input,.history-toolbar select{flex:1 1 180px}
 
@@ -195,7 +201,7 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
   position:relative;
   width:100%;
   max-width:1050px;
-  aspect-ratio:1280 / 853;
+  aspect-ratio:1277 / 694;
   margin:0 auto;
   overflow:hidden;
   border-radius:10px;
@@ -224,8 +230,8 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
   position:absolute;
   left:50%;
   transform:translateX(-50%);
-  width:54px;
-  height:34px;
+  width:34px;
+  height:24px;
   border:none;
   background:transparent;
   border-radius:50%;
@@ -239,8 +245,8 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
 }
 .plan-aisle-label{
   color:#fff;
-  width:44px;
-  height:30px;
+  width:30px;
+  height:22px;
   display:flex;
   align-items:center;
   justify-content:center;
@@ -254,7 +260,7 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
   border-radius:50%;
   padding:0;
   text-align:center;
-  font:800 19px/1 Arial,sans-serif;
+  font:800 12px/1 Arial,sans-serif;
   white-space:nowrap;
   text-shadow:
     0 1px 2px rgba(0,0,0,.7),
@@ -302,11 +308,11 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
     overflow:visible;
   }
   .plan-aisle-label{
-    width:18px !important;
-    height:14px !important;
-    min-width:18px;
-    max-width:18px;
-    font-size:8px !important;
+    width:16px !important;
+    height:12px !important;
+    min-width:16px;
+    max-width:16px;
+    font-size:7px !important;
     line-height:1 !important;
     font-weight:800;
     padding:0;
@@ -348,8 +354,33 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
   to{transform:scale(1.25);opacity:1}
 }
 </style>
+<style>/* Excel import UI */.excel-modal{position:fixed;inset:0;background:rgba(0,0,0,.58);display:none;align-items:center;justify-content:center;padding:16px;z-index:10050}.excel-dialog{background:#fff;border-radius:16px;width:min(620px,100%);max-height:88vh;overflow:auto;box-shadow:0 18px 60px #0007;padding:20px;color:var(--ink)}.excel-head{display:flex;align-items:flex-start;gap:12px;margin-bottom:16px}.excel-icon{width:42px;height:42px;flex:0 0 42px;border-radius:11px;background:#eaf2ff;color:#1f6feb;display:flex;align-items:center;justify-content:center;font-size:21px}.excel-head h2{margin:0 0 4px;font-size:20px}.excel-file{font-size:12px;color:var(--muted);overflow-wrap:anywhere}.excel-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0}.excel-stat{background:#f6f8fa;border:1px solid #e0e5ea;border-radius:10px;padding:11px}.excel-stat b{display:block;font-size:18px;margin-bottom:2px}.excel-stat span{font-size:11px;color:var(--muted)}.excel-section{margin-top:14px}.excel-section-title{font-size:13px;font-weight:700;margin-bottom:7px}.excel-preview{background:#f7f9fb;border:1px solid #dce3e9;border-radius:10px;padding:9px;max-height:150px;overflow:auto;font-size:12px}.excel-preview-row{padding:7px 4px;border-bottom:1px solid #e3e8ed}.excel-preview-row:last-child{border-bottom:0}.excel-preview-row strong{color:#1264d8;margin-right:7px}.excel-warn{background:#fff8e7;border:1px solid #f2d38a;color:#805b00;border-radius:10px;padding:10px;font-size:12px}.excel-error{background:#fff0f0;border:1px solid #f2b8b8;color:#9b1c1c;border-radius:10px;padding:11px;font-size:13px}.excel-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}.excel-actions button{min-width:105px}.excel-primary{background:var(--accent)!important;color:#fff!important;border-color:var(--accent)!important}.excel-success-icon{background:#eaf8ed;color:#2e7d46}.excel-error-icon{background:#fff0f0;color:#b42318}.excel-close{margin-left:auto;border:0;background:transparent;font-size:24px;line-height:1;color:#66717d;padding:0 4px}.excel-close:hover{background:#f1f3f5}@media(max-width:520px){.excel-dialog{padding:16px}.excel-stats{grid-template-columns:1fr 1fr}.excel-stat:last-child{grid-column:1/-1}.excel-actions{flex-direction:column-reverse}.excel-actions button{width:100%}}</style>
 
-<style id="excel-ui-fix">.excel-modal{position:fixed;inset:0;background:rgba(0,0,0,.58);display:none;align-items:center;justify-content:center;padding:16px;z-index:10050}.excel-dialog{background:#fff;border-radius:16px;width:min(620px,100%);max-height:88vh;overflow:auto;box-shadow:0 18px 60px #0007;padding:20px;color:var(--ink)}.excel-head{display:flex;align-items:flex-start;gap:12px;margin-bottom:16px}.excel-icon{width:42px;height:42px;flex:0 0 42px;border-radius:11px;background:#eaf2ff;color:#1f6feb;display:flex;align-items:center;justify-content:center;font-size:21px}.excel-head h2{margin:0 0 4px;font-size:20px}.excel-file{font-size:12px;color:var(--muted);overflow-wrap:anywhere}.excel-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0}.excel-stat{background:#f6f8fa;border:1px solid #e0e5ea;border-radius:10px;padding:11px}.excel-stat b{display:block;font-size:18px;margin-bottom:2px}.excel-stat span{font-size:11px;color:var(--muted)}.excel-section{margin-top:14px}.excel-section-title{font-size:13px;font-weight:700;margin-bottom:7px}.excel-preview{background:#f7f9fb;border:1px solid #dce3e9;border-radius:10px;padding:9px;max-height:150px;overflow:auto;font-size:12px}.excel-preview-row{padding:7px 4px;border-bottom:1px solid #e3e8ed}.excel-preview-row:last-child{border-bottom:0}.excel-preview-row strong{color:#1264d8;margin-right:7px}.excel-warn{background:#fff8e7;border:1px solid #f2d38a;color:#805b00;border-radius:10px;padding:10px;font-size:12px}.excel-error{background:#fff0f0;border:1px solid #f2b8b8;color:#9b1c1c;border-radius:10px;padding:11px;font-size:13px}.excel-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}.excel-actions button{min-width:105px}.excel-primary{background:var(--accent)!important;color:#fff!important;border-color:var(--accent)!important}.excel-success-icon{background:#eaf8ed;color:#2e7d46}.excel-error-icon{background:#fff0f0;color:#b42318}.excel-close{margin-left:auto;border:0;background:transparent;font-size:24px;line-height:1;color:#66717d;padding:0 4px}.excel-close:hover{background:#f1f3f5}@media(max-width:520px){.excel-dialog{padding:16px}.excel-stats{grid-template-columns:1fr 1fr}.excel-stat:last-child{grid-column:1/-1}.excel-actions{flex-direction:column-reverse}.excel-actions button{width:100%}}.app-toast{position:fixed;left:50%;bottom:20px;transform:translate(-50%,14px);opacity:0;pointer-events:none;z-index:120000;background:#17212b;color:#fff;border-radius:12px;padding:10px 14px;box-shadow:0 8px 28px #0005;font-size:13px;font-weight:700;transition:.18s ease;max-width:calc(100% - 28px);text-align:center}.app-toast.show{opacity:1;transform:translate(-50%,0)}</style>
+<style id="app-upgrades">
+.app-userbar{margin-top:8px}
+.role-badge{display:inline-flex;align-items:center;gap:5px;background:#ffffff18;border:1px solid #ffffff2e;border-radius:999px;padding:5px 9px;font-size:12px;color:#fff}
+.app-toast{position:fixed;left:50%;bottom:calc(76px + env(safe-area-inset-bottom));transform:translate(-50%,14px);opacity:0;pointer-events:none;z-index:120000;background:#17212b;color:#fff;border-radius:12px;padding:10px 14px;box-shadow:0 8px 28px #0005;font-size:13px;font-weight:700;transition:.18s ease;max-width:calc(100% - 28px);text-align:center}
+.app-toast.show{opacity:1;transform:translate(-50%,0)}
+body.dark{--bg:#0f1419;--card:#171e25;--ink:#edf2f7;--muted:#9ca9b5;--empty:#202a33;--border:#394754}
+body.dark input,body.dark button,body.dark textarea,body.dark .dialog,body.dark .result,body.dark .search-result-row,body.dark .street,body.dark .special-box,body.dark .mini-map-wrap,body.dark .history-entry,body.dark .special-cell{background:#171e25;color:var(--ink);border-color:#394754}
+body.dark .shelf{background:#151c22;border-color:#46535f}
+body.dark .shelf-title{background:#222c35;color:#edf2f7}
+body.dark .item-meta,body.dark .search-result-map-btn{background:#202a33;color:var(--ink);border-color:#46535f}
+body.dark .search-result-info .article,body.dark .result .article{color:#edf2f7}
+body.dark .search-result-info strong,body.dark .result strong{color:#58a6ff}
+.bottom-nav{display:none}
+@media(max-width:700px){
+  body{padding-bottom:calc(66px + env(safe-area-inset-bottom))}
+  .bottom-nav{position:fixed;display:grid;grid-template-columns:repeat(5,1fr);left:0;right:0;bottom:0;z-index:110000;padding:7px 6px calc(7px + env(safe-area-inset-bottom));background:#17212bf5;backdrop-filter:blur(10px);box-shadow:0 -4px 18px #0003}
+  .bottom-nav button{border:0;background:transparent;color:#fff;padding:6px 2px;border-radius:10px;font-size:10px;line-height:1.1;min-width:0}
+  .bottom-nav button span{display:block;font-size:18px;margin-bottom:3px}
+  .bottom-nav button:active{transform:scale(.95)}
+  #historyModal{padding:0}
+  #historyModal .dialog{width:100%;height:100%;max-height:none;border-radius:0;padding:14px}
+  .history-toolbar{position:sticky;top:-14px;background:var(--card);padding:10px 0;z-index:2}
+}
+</style>
+
 </head>
 <body>
 
@@ -378,7 +409,7 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
       Войдите через Google, чтобы открыть карту склада.
     </p>
 
-    <button onclick="loginWithGoogle()" style="
+    <button id="googleLoginBtn" type="button" onclick="window.startGoogleLogin ? window.startGoogleLogin() : void 0" style="
       width:100%;
       padding:12px 18px;
       border:0;
@@ -392,6 +423,21 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
       Войти через Google
     </button>
 
+    <script>
+    window.startGoogleLogin=async function(){
+      const btn=document.getElementById("googleLoginBtn");
+      const err=document.getElementById("loginError");
+      if(err){err.style.display="none";err.textContent="";}
+      for(let i=0;i<50;i++){
+        if(typeof window.loginWithGoogle === "function") return window.loginWithGoogle();
+        if(btn){btn.disabled=true;btn.style.opacity=".65";btn.textContent="Подготавливаем вход…";}
+        await new Promise(r=>setTimeout(r,100));
+      }
+      if(btn){btn.disabled=false;btn.style.opacity="1";btn.textContent="Войти через Google";}
+      if(err){err.textContent="Не удалось загрузить модуль входа. Перезапустите приложение и попробуйте ещё раз.";err.style.display="block";}
+    };
+    </script>
+
     <div id="loginError" style="
       color:#ff6b6b;
       margin-top:15px;
@@ -401,15 +447,15 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
   </div>
 </div>
 
-
 <div id="excelModal" class="excel-modal" aria-hidden="true"><div class="excel-dialog" role="dialog" aria-modal="true"><div class="excel-head"><div id="excelModalIcon" class="excel-icon">📥</div><div style="min-width:0;flex:1"><h2 id="excelModalTitle">Импорт Excel</h2><div id="excelModalFile" class="excel-file"></div></div><button class="excel-close" type="button" onclick="closeExcelModal()">×</button></div><div id="excelModalBody"></div><div id="excelModalActions" class="excel-actions"></div></div></div>
 <header>
 <h1>📦 Интерактивная карта склада</h1>
-<div class="sub">Адрес: улица (S1–S5) → полка (A–E слева / F–K справа)</div>
+<div class="sub">Адрес: улица (S1–S5) → полка (A–E слева / F–K справа)</div><div class="app-userbar"><span id="roleBadge" class="role-badge">👁️ Просмотр</span></div>
 <div class="toolbar">
 <input id="search" type="search" placeholder="🔎 Поиск детали, артикула или адреса…" style="width:100%;min-width:0">
 <button class="primary" onclick="document.getElementById('excelFile').click()">📥 Загрузить Excel</button>
-<button data-edit-only onclick="temporaryClearWarehouse()" style="background:#fee2e2;color:#991b1b;border-color:#fca5a5">🗑️ Очистить склад</button><button onclick="openHistory()">🕘 История</button>
+<button data-edit-only onclick="exportExcel()">📤 Экспорт Excel</button>
+<button data-admin-only onclick="temporaryClearWarehouse()" style="background:#fee2e2;color:#991b1b;border-color:#fca5a5">🗑️ Очистить склад</button><button onclick="openHistory()">🕘 История</button>
 <input id="excelFile" type="file" accept=".xlsx,.xls" style="display:none">
 </div>
 </header>
@@ -453,13 +499,13 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
 <div id="itemMetaList" class="item-meta"></div>
 <div class="actions">
 <button onclick="closeModal()">Отмена</button>
-<button data-edit-only onclick="openMoveModal()">📦 Переместить деталь</button>
+<button data-edit-only onclick="openMoveModal()">⚡ Быстрое перемещение</button>
 <button data-edit-only class="primary" onclick="saveCell()">Сохранить</button>
 </div>
 </div></div>
 
 <div id="moveModal"><div class="dialog">
-<h2>📦 Переместить деталь</h2>
+<h2>⚡ Быстрое перемещение</h2>
 
 <label>Откуда перемещаем</label>
 <div class="move-grid">
@@ -505,7 +551,7 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
 </div></div>
 
 <div id="historyModal"><div class="dialog">
-<h2>🕘 Подробная история склада</h2>
+<div class="history-head"><h2>🕘 Подробная история склада</h2><button class="history-close" type="button" aria-label="Закрыть историю" onclick="closeHistory()">×</button></div>
 <div class="history-toolbar">
   <input id="historySearch" type="text" placeholder="Артикул или ячейка…">
   <select id="historyType">
@@ -514,17 +560,17 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
     <option value="add">Добавления</option>
     <option value="remove">Удаления</option>
     <option value="edit">Изменения</option>
-    <option value="import">Импорт Excel</option>
+    <option value="import">Импорт Excel</option><option value="clear">Очистка склада</option>
   </select>
 </div>
-<div id="historyList">Загрузка…</div>
+<div id="historySummary" style="margin:8px 0;color:var(--muted);font-size:12px"></div><div id="historyList">Загрузка…</div>
 <div class="actions"><button onclick="closeHistory()">Закрыть</button></div>
 </div></div>
 
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/firebase@9.23.0/firebase-app-compat.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/firebase@9.23.0/firebase-database-compat.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/firebase@9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script>
 const firebaseConfig = {
     apiKey: "AIzaSyAFd_IPlACJlpxeGsNE7Iq3dQm-VYu5Ba4",
@@ -537,42 +583,230 @@ const firebaseConfig = {
     measurementId: "G-7GZFEYSDSJ"
 };
 
-firebase.initializeApp(firebaseConfig);
+let auth = null;
+let provider = null;
+let db = null;
+let rootRef = null;
+let firebaseReady = false;
 
+function showLoginError(message){
+  const el=document.getElementById("loginError");
+  if(!el) return;
+  el.textContent=message || "Неизвестная ошибка входа.";
+  el.style.display="block";
+}
 
-const auth = firebase.auth();
-const provider = new firebase.auth.GoogleAuthProvider();
+function setLoginBusy(busy){
+  const btn=document.getElementById("googleLoginBtn");
+  if(!btn) return;
+  btn.disabled=!!busy;
+  btn.style.opacity=busy?".65":"1";
+  btn.textContent=busy?"Открываем Google…":"Войти через Google";
+}
 
-const db=firebase.database();
- 
-const rootRef=db.ref("warehouse");
- function loginWithGoogle(){
-  auth.signInWithPopup(provider)
-    .catch(error => {
-      const el = document.getElementById("loginError");
-      el.textContent = "Ошибка входа: " + error.message;
-      el.style.display = "block";
-    });
+function initFirebase(){
+  try{
+    if(typeof window.firebase === "undefined"){
+      showLoginError("Firebase не загрузился. Проверьте интернет и обновите страницу.");
+      return false;
+    }
+
+    if(!window.firebase.apps || !window.firebase.apps.length){
+      window.firebase.initializeApp(firebaseConfig);
+    }
+
+    auth=window.firebase.auth();
+    provider=new window.firebase.auth.GoogleAuthProvider();
+    db=window.firebase.database();
+    rootRef=db.ref("warehouse");
+    firebaseReady=true;
+    return true;
+  }catch(error){
+    console.error("Firebase initialization error:",error);
+    showLoginError("Ошибка запуска Firebase: "+(error?.message||"неизвестная ошибка"));
+    return false;
+  }
+}
+
+function isCapacitorApp(){
+  try{
+    return !!window.Capacitor?.isNativePlatform?.();
+  }catch(e){
+    return false;
+  }
+}
+
+async function loginWithGoogle(){
+  const el=document.getElementById("loginError");
+  if(el){el.style.display="none";el.textContent="";}
+
+  if(!firebaseReady || !auth || !provider){
+    const ready=initFirebase();
+    if(!ready || !auth || !provider){
+      showLoginError("Firebase не удалось запустить. Проверьте интернет и обновите страницу.");
+      return;
+    }
+  }
+
+  setLoginBusy(true);
+  try{
+    if(isCapacitorApp()){
+      // Android: настоящий нативный Google Sign-In.
+      // skipNativeAuth=true оставляет вход Firebase под контролем Web SDK,
+      // а useCredentialManager=false — тот режим, который у нас уже работал.
+      const plugin=window.Capacitor?.Plugins?.FirebaseAuthentication;
+      if(!plugin || typeof plugin.signInWithGoogle!=="function"){
+        throw new Error("Плагин FirebaseAuthentication не найден в приложении.");
+      }
+
+      const result=await plugin.signInWithGoogle({
+        skipNativeAuth:true,
+        useCredentialManager:false
+      });
+
+      const idToken=result?.credential?.idToken;
+      if(!idToken){
+        throw new Error("Google не вернул ID-токен.");
+      }
+
+      const credential=window.firebase.auth.GoogleAuthProvider.credential(idToken);
+      await auth.signInWithCredential(credential);
+    }else{
+      // Браузер: оставляем рабочий web-вход через popup.
+      // Redirect здесь специально НЕ используется.
+      await auth.signInWithPopup(provider);
+    }
+  }catch(error){
+    console.error("Google login error:",error);
+
+    let msg=error?.message||"Неизвестная ошибка входа.";
+    if(error?.code==="auth/unauthorized-domain"){
+      msg="Домен сайта не разрешён в Firebase → Authentication → Settings → Authorized domains.";
+    }else if(error?.code==="auth/popup-blocked"){
+      msg="Браузер заблокировал окно Google. Разрешите всплывающие окна для сайта.";
+    }else if(error?.code==="auth/popup-closed-by-user"){
+      msg="Окно Google было закрыто до завершения входа.";
+    }else if(error?.code==="auth/operation-not-allowed"){
+      msg="В Firebase не включён вход через Google.";
+    }else if(error?.code==="auth/network-request-failed"){
+      msg="Ошибка сети. Проверьте интернет-соединение.";
+    }else if(error?.message?.includes("Account reauth failed")){
+      msg="Google не смог повторно подтвердить аккаунт. Попробуйте выбрать аккаунт ещё раз.";
+    }
+
+    showLoginError("Ошибка входа: "+msg);
+  }finally{
+    setLoginBusy(false);
+  }
+}
+window.loginWithGoogle=loginWithGoogle;
+window.startGoogleLogin=loginWithGoogle;
+
+function haptic(duration){
+  try{if("vibrate" in navigator)navigator.vibrate(duration||9)}catch(e){}
+}
+function showAppToast(message){
+  let el=document.getElementById("appToast");
+  if(!el){
+    el=document.createElement("div");
+    el.id="appToast";
+    el.className="app-toast";
+    document.body.appendChild(el);
+  }
+  el.textContent=message;
+  el.classList.add("show");
+  clearTimeout(window.__toastTimer);
+  window.__toastTimer=setTimeout(()=>el.classList.remove("show"),1800);
+}
+function focusAppSearch(){
+  const x=document.getElementById("search");
+  if(x){
+    x.focus({preventScroll:true});
+    x.scrollIntoView({behavior:"smooth",block:"start"});
+  }
+}
+function scrollToMap(){
+  const wrap=document.getElementById("miniMapWrap");
+  if(!wrap)return;
+
+  // При нажатии «Карта» центрируем именно изображение плана
+  // по центру видимой области экрана.
+  const image=wrap.querySelector(".warehouse-plan");
+  const target=image || wrap;
+  const rect=target.getBoundingClientRect();
+  const targetTop=window.scrollY + rect.top + rect.height/2 - window.innerHeight/2;
+  const maxScroll=Math.max(0,document.documentElement.scrollHeight-window.innerHeight);
+
+  window.scrollTo({
+    top:Math.max(0,Math.min(maxScroll,targetTop)),
+    behavior:"smooth"
+  });
+}
+function scrollToWarehouseCells(){
+  const x=document.getElementById("map");
+  if(x)x.scrollIntoView({behavior:"smooth",block:"start"});
+}
+
+// Enter в поиске подтверждает запрос и переносит к карте склада.
+(function setupSearchEnter(){
+  const searchInput=document.getElementById("search");
+  if(!searchInput)return;
+  searchInput.addEventListener("keydown",e=>{
+    if(e.key!=="Enter")return;
+    const query=searchInput.value.trim();
+    if(!query)return;
+    e.preventDefault();
+    doSearch();
+    setTimeout(()=>scrollToMap(),50);
+  });
+})();
+
+function toggleDarkTheme(){
+  const dark=!document.body.classList.contains("dark");
+  document.body.classList.toggle("dark",dark);
+  localStorage.setItem("warehouseDarkTheme",dark?"1":"0");
+  const b=document.getElementById("themeNavBtn");
+  if(b)b.innerHTML=dark?"<span>☀️</span>Светлая":"<span>🌙</span>Тёмная";
+  haptic(12);
+}
+(function(){
+  if(localStorage.getItem("warehouseDarkTheme")==="1"){
+    document.body.classList.add("dark");
+  }
+})();
+
+const firebaseStarted=initFirebase();
+
+// Не используем inline onclick: обработчик назначается напрямую после загрузки страницы.
+const googleLoginBtn=document.getElementById("googleLoginBtn");
+if(googleLoginBtn){
+  googleLoginBtn.onclick=loginWithGoogle;
+}
+
+if(firebaseStarted && auth){
+  auth.getRedirectResult().catch(error=>{
+    console.error("Google redirect result error:",error);
+    if(error?.code){
+      showLoginError("Ошибка входа: "+(error.message||error.code));
+    }
+  });
+
+  auth.onAuthStateChanged(user=>{
+    const loginScreen=document.getElementById("loginScreen");
+    if(user){
+      if(loginScreen) loginScreen.style.display="none";
+    }else{
+      if(loginScreen) loginScreen.style.display="flex";
+    }
+    setAccessUi();
+    initHistoryUi();
+  });
 }
 
 function applyAccessMode(){
-  const editOnlyIds=["clearWarehouseBtn","saveBtn","moveBtn"];
   const editable=document.querySelectorAll("[data-edit-only]");
   editable.forEach(el=>el.style.display=canEdit()?"":"none");
 }
-
-auth.onAuthStateChanged(user => {
-  const loginScreen = document.getElementById("loginScreen");
-
-  if (user) {
-    loginScreen.style.display = "none";
-  } else {
-    loginScreen.style.display = "flex";
-  }
-
-  setAccessUi();
-  initHistoryUi();
-});
 
 const letters=["A","B","C","D","E","F","G","H","J","K"];
 const leftLetters=["A","B","C","D","E"];
@@ -601,12 +835,23 @@ function normalizeData(d){
  }
  return out;
 }
-function itemKey(addr,line){return addr+"|"+String(line||"").trim();}
+function safeFirebaseKey(value){
+  // Firebase Realtime Database forbids . # $ / [ ] in object keys.
+  // Encode EVERY character into a Firebase-safe hexadecimal key.
+  // This also handles unusual characters/newlines coming from Excel.
+  // The visible article text itself is never changed.
+  return Array.from(String(value??""))
+    .map(ch=>ch.codePointAt(0).toString(16).padStart(6,"0"))
+    .join("_");
+}
+function itemKey(addr,line){
+  return safeFirebaseKey(addr+"|"+String(line||"").trim());
+}
 function normalizeMeta(m){
  const out={};
  if(m && typeof m==="object"){
    for(const [k,v] of Object.entries(m)){
-     if(v && typeof v==="object") out[k]={addedAt:v.addedAt||null,updatedAt:v.updatedAt||null};
+     if(v && typeof v==="object") out[safeFirebaseKey(k)]={addedAt:v.addedAt||null,updatedAt:v.updatedAt||null};
    }
  }
  return out;
@@ -620,16 +865,42 @@ function formatDate(ts){
 }
 function currentUserEmail(){return auth.currentUser?.email||"неизвестно";}
 
-const OWNER_EMAIL="glebur172@gmail.com";
-function canEdit(){
+const ADMIN_EMAILS=["glebur172@gmail.com"];
+const EDITOR_EMAILS=[
+  "glebur172@gmail.com",
+  "mashakashner2002@gmail.com",
+  "motroyl@gmail.com",
+  "hlebish7@gmail.com"
+];
+
+function currentUserRole(){
   const email=String(auth.currentUser?.email||"").toLowerCase();
-  return email===OWNER_EMAIL.toLowerCase();
+  if(ADMIN_EMAILS.includes(email))return "admin";
+  if(EDITOR_EMAILS.includes(email))return "editor";
+  return "viewer";
+}
+function roleLabel(role){
+  return ({admin:"👑 Администратор",editor:"🛠️ Редактор",viewer:"👁️ Просмотр"})[role]||"👁️ Просмотр";
+}
+function canEdit(){
+  const role=currentUserRole();
+  return role==="admin"||role==="editor";
+}
+function canAdmin(){
+  return currentUserRole()==="admin";
 }
 function setAccessUi(){
   const editable=canEdit();
-  document.querySelectorAll("[data-edit-only]").forEach(el=>{
-    el.style.display=editable?"":"none";
-  });
+  const admin=canAdmin();
+  document.querySelectorAll("[data-edit-only]").forEach(el=>el.style.display=editable?"":"none");
+  document.querySelectorAll("[data-admin-only]").forEach(el=>el.style.display=admin?"":"none");
+  const badge=document.getElementById("roleBadge");
+  if(badge){
+    const role=currentUserRole();
+    const email=String(auth.currentUser?.email||"");
+    badge.textContent=roleLabel(role)+(email?" · "+email:"");
+    badge.title=email;
+  }
 }
 
 function recordMetaChanges(addr,oldValue,newValue){
@@ -694,12 +965,13 @@ function historyTypeLabel(type){
 
 function renderHistory(){
   const list=document.getElementById("historyList");
+  const allHistory=window.__warehouseHistory||[];
   if(!list)return;
 
   const q=String(document.getElementById("historySearch")?.value||"").trim().toLowerCase();
   const type=String(document.getElementById("historyType")?.value||"all");
 
-  let items=(window.__warehouseHistory||[]).filter(x=>{
+  let items=allHistory.filter(x=>{
     if(type!=="all" && !(type==="import" && (x.type==="import" || x.type==="importExcel")) && x.type!==type)return false;
     if(!q)return true;
     const hay=[
@@ -707,6 +979,16 @@ function renderHistory(){
     ].filter(Boolean).join(" ").toLowerCase();
     return hay.includes(q);
   });
+
+  const summary=document.getElementById("historySummary");
+  if(summary){
+    const c={move:0,add:0,remove:0,edit:0,import:0,clear:0};
+    allHistory.forEach(x=>{
+      const k=x.type==="importExcel"?"import":x.type;
+      if(c[k]!=null)c[k]++;
+    });
+    summary.textContent=allHistory.length+" событий · 📦 "+c.move+" перемещений · ➕ "+c.add+" добавлений · ✏️ "+c.edit+" изменений";
+  }
 
   if(!items.length){
     list.innerHTML='<div class="result">История по заданным условиям пуста.</div>';
@@ -752,63 +1034,12 @@ function renderHistory(){
   }).join("");
 }
 
-let __modalHistoryDepth=0;
-let __closingModalFromHistory=false;
-
-function __openModalHistory(id){
-  history.pushState({warehouseModal:id},"");
-  __modalHistoryDepth++;
-}
-
-function __closeModalHistory(){
-  if(__modalHistoryDepth>0){
-    __modalHistoryDepth--;
-    __closingModalFromHistory=true;
-    history.back();
-  }
-}
-
-function __closeTopModalFromHistory(){
-  if(document.getElementById("moveModal")?.style.display==="flex"){
-    closeMoveModal(true);
-    return;
-  }
-  if(document.getElementById("specialModal")?.style.display==="flex"){
-    closeSpecial(true);
-    return;
-  }
-  if(document.getElementById("historyModal")?.style.display==="flex"){
-    closeHistory(true);
-    return;
-  }
-  if(document.getElementById("modal")?.style.display==="flex"){
-    closeModal(true);
-  }
-}
-
-window.addEventListener("keydown",e=>{
-  if(e.key!=="Escape")return;
-  __closeTopModalFromHistory();
-});
-
-window.addEventListener("popstate",()=>{
-  if(__closingModalFromHistory){
-    __closingModalFromHistory=false;
-    return;
-  }
-  if(__modalHistoryDepth>0){
-    __modalHistoryDepth--;
-    __closeTopModalFromHistory();
-  }
-});
-
 async function openHistory(){
   const modal=document.getElementById("historyModal");
   const list=document.getElementById("historyList");
   if(!modal||!list)return;
 
   modal.style.display="flex";
-  __openModalHistory("historyModal");
   list.innerHTML="Загрузка истории…";
 
   try{
@@ -829,10 +1060,9 @@ async function openHistory(){
   }
 }
 
-function closeHistory(fromHistory=false){
+function closeHistory(){
   const modal=document.getElementById("historyModal");
   if(modal)modal.style.display="none";
-  if(!fromHistory)__closeModalHistory();
 }
 
 function initHistoryUi(){
@@ -840,7 +1070,7 @@ function initHistoryUi(){
   document.getElementById("historyType")?.addEventListener("change",renderHistory);
 }
 
-function linesOf(value){return String(value||"").split(/\\r?\\n/).map(x=>x.trim()).filter(Boolean);}
+function linesOf(value){return String(value||"").split(/\r?\n/).map(x=>x.trim()).filter(Boolean);}
 function metaFor(addr,line){
  const key=itemKey(addr,line);
  return itemMeta[key]||{addedAt:null,updatedAt:null};
@@ -897,6 +1127,7 @@ function shelf(box,s,l,parent){
  parent.appendChild(sh);return occupied;
 }
 function openModal(s,l,n){
+ clearMapTarget();
  current={s,l,n};document.getElementById("addr").textContent=address(s,l,n);
  document.getElementById("content").value=data[s][l][n]||"";
  renderItemMeta(address(s,l,n),data[s][l][n]||"");
@@ -1034,12 +1265,10 @@ function openMoveModal(){
   };
 
   document.getElementById("moveModal").style.display="flex";
-  __openModalHistory("moveModal");
 }
 
-function closeMoveModal(fromHistory=false){
+function closeMoveModal(){
   document.getElementById("moveModal").style.display="none";
-  if(!fromHistory)__closeModalHistory();
 }
 
 async function moveSelectedDetail(){
@@ -1124,7 +1353,7 @@ async function moveSelectedDetail(){
       current=null;
     }
 
-    alert(`Готово!\n\n${detail}\n\n${sourceAddress} → ${destAddress}`);
+    showAppToast("✓ "+detail+": "+sourceAddress+" → "+destAddress);haptic(18);
   }catch(e){
     console.error("Ошибка перемещения:",e);
     const code=e?.code||"";
@@ -1254,8 +1483,8 @@ function renderSpecial(){
  }
 }
 async function temporaryClearWarehouse(){
-  if(!canEdit()){
-    alert("Режим просмотра: очистка доступна только владельцу.");
+  if(!canAdmin()){
+    alert("Очистка склада доступна только администратору.");
     return;
   }
 
@@ -1342,27 +1571,9 @@ function fixKeyboardLayout(value){
 }
 
 function searchTokens(value){
-  const normalized=normalizeSearchText(value);
-  const tokens=normalized.split(/\s+/).filter(Boolean);
-  if(!tokens.length)return [];
-
-  // "AP MZ 0903" -> "apmz0903"
-  // "MZ 0903"    -> "mz0903"
-  // Не склеиваем полное название марки с номером:
-  // "mazda 0903" остаётся запросом по марке + номеру.
-  const compact=tokens.join("").replace(/[^a-z0-9]/g,"");
-  const hasNumber=tokens.some(t=>/^\d{3,}$/.test(t));
-  const alphaTokens=tokens.filter(t=>/^[a-z]+$/.test(t));
-  const looksLikeCodePrefix=alphaTokens.length>0 && alphaTokens.every(t=>t.length<=4);
-  const hasAP=tokens.includes("ap");
-  const hasBrandCode=alphaTokens.some(t=>Object.prototype.hasOwnProperty.call(brandCodeAliases,t));
-
-  if(tokens.length>=2 && hasNumber && (hasAP || hasBrandCode) && looksLikeCodePrefix &&
-     /^[a-z]+\d{3,}$/.test(compact) && isArticleLikeToken(compact)){
-    return [compact];
-  }
-
-  return tokens;
+  return normalizeSearchText(value)
+    .split(/\s+/)
+    .filter(Boolean);
 }
 const searchAliases={
   "капот":["капот","hood","bonnet"],
@@ -1668,77 +1879,36 @@ const partCodeTypes={
 
 function isArticleLikeToken(token){
   const compact=normalizeSearchText(token).replace(/[^a-z0-9]/g,"");
-  // Артикулы/коды: APMZ0903, MZ0903, 27C103 и т.п.
-  // Они не должны уходить в общий fuzzy-поиск.
-  return /^(?=.*[a-z])(?=.*\d)[a-z0-9]+$/.test(compact) && compact.length>=4;
-}
-
-function isNumericSearchToken(token){
-  const compact=normalizeSearchText(token).replace(/\D/g,"");
-  return /^\d{3,}$/.test(compact) && !/[a-zа-яіїєґ]/i.test(normalizeSearchText(token));
-}
-
-function articleCodeWords(text){
-  return normalizeSearchText(text)
-    .split(/[^a-z0-9]+/)
-    .map(x=>x.trim())
-    .filter(x=>/^[a-z0-9]+$/.test(x) && /[a-z]/.test(x) && /\d/.test(x));
+  // Артикулы/коды вроде mz0903, apmz0903, 27c103, 81b103-j.
+  // Для них нельзя использовать агрессивный fuzzy-поиск:
+  // mz0903 не должен совпадать с mz0203c только из-за похожих цифр.
+  return /^(?=.*[a-z])(?=.*\\d)[a-z0-9]+$/.test(compact) && compact.length>=4;
 }
 
 function articleTokenMatchesText(token,text){
   const q=normalizeSearchText(token).replace(/[^a-z0-9]/g,"");
   if(!q)return false;
 
-  const words=articleCodeWords(text);
-  if(!words.length)return false;
+  const normalized=normalizeSearchText(text);
+  const words=normalized
+    .split(/[^a-z0-9]+/)
+    .map(x=>x.trim())
+    .filter(Boolean);
 
-  // Полный AP-код — только точное совпадение.
-  if(q.startsWith("ap"))return words.some(w=>w===q);
+  // Сначала строгое совпадение / вхождение.
+  // Это позволяет mz0903 найти APMZ0903, но не mz0203c.
+  if(words.some(w=>w===q || w.includes(q) || q.includes(w))) return true;
 
-  // Код без AP — часть полного артикула.
-  if(/[a-z]/.test(q) && /\d/.test(q)){
-    if(words.some(w=>w===q || w.includes(q)))return true;
-  }
-
-  // Одна опечатка для достаточно длинного кода.
+  // Разрешаем ровно одну опечатку только для достаточно длинного кода.
+  // При этом сравниваем именно код, а не отдельные цифры в конце.
   if(q.length>=5){
     for(const w of words){
       if(Math.abs(w.length-q.length)>1)continue;
       if(levenshtein(q,w)<=1)return true;
     }
   }
+
   return false;
-}
-
-function numericTokenMatchesText(token,text){
-  const q=normalizeSearchText(token).replace(/\D/g,"");
-  if(!q || q.length<3)return false;
-  // Числа ищем только внутри артикулов.
-  return articleCodeWords(text).some(w=>w.includes(q));
-}
-
-function addressQueryScore(query,addressValue){
-  const q=normalizeSearchText(query).replace(/[^a-z0-9]/g,"");
-  const a=normalizeSearchText(addressValue).replace(/[^a-z0-9]/g,"");
-  if(!q || !a)return 0;
-
-  // Полный адрес: S5-A3, S5 A3, S5A3, S5-A-3.
-  let m=q.match(/^s?([1-5])([a-hjk])(\d{1,2})$/);
-  if(m)return a===`s${m[1]}${m[2]}${m[3]}` ? 1000 : 0;
-
-  // Улица + полка: S5-A / S5A.
-  m=q.match(/^s?([1-5])([a-hjk])$/);
-  if(m)return a.startsWith(`s${m[1]}${m[2]}`) ? 700 : 0;
-
-  // Только улица: S5.
-  m=q.match(/^s?([1-5])$/);
-  if(m)return a.startsWith(`s${m[1]}`) ? 500 : 0;
-
-  // Только полка+ячейка: A3.
-  m=q.match(/^([a-hjk])(\d{1,2})$/);
-  if(m)return a.endsWith(`${m[1]}${m[2]}`) ? 350 : 0;
-
-  return 0;
 }
 
 function queryTokenMatchesText(token,text){
@@ -1746,8 +1916,11 @@ function queryTokenMatchesText(token,text){
   const textTokens=normalized.split(/\s+/).filter(Boolean);
   const compact=normalized.replace(/\s+/g,"");
 
-  if(isArticleLikeToken(token))return articleTokenMatchesText(token,text);
-  if(isNumericSearchToken(token))return numericTokenMatchesText(token,text);
+  // Важный приоритет: если пользователь ввёл артикул/код,
+  // не применяем общий fuzzy-поиск по 2-3 случайным цифрам.
+  if(isArticleLikeToken(token)){
+    return articleTokenMatchesText(token,text);
+  }
 
   for(const variant of expandSearchToken(token)){
     if(!variant)continue;
@@ -1763,91 +1936,24 @@ function queryTokenMatchesText(token,text){
       }
     }
   }
+
   return false;
 }
 
 function tokenIsPartType(token){
   const base=normalizeSearchText(token);
-  if(!base)return null;
-
-  const entries=Object.entries(partTypeAliases);
-
-  // Сначала точное совпадение по всем типам.
-  for(const [name,aliases] of entries){
-    const all=[name,...aliases].map(x=>normalizeSearchText(x)).filter(Boolean);
-    if(all.some(x=>x===base))return name;
+  for(const [name,aliases] of Object.entries(partTypeAliases)){
+    if([name,...aliases].some(x=>normalizeSearchText(x)===base))return name;
   }
-
-  // Затем префикс: "кап", "крыл", "решет" и т.п.
-  if(base.length>=2){
-    for(const [name,aliases] of entries){
-      const all=[name,...aliases].map(x=>normalizeSearchText(x)).filter(Boolean);
-      if(all.some(x=>x.length>=base.length && x.startsWith(base)))return name;
-    }
-  }
-
-  // И только потом осторожный fuzzy.
-  if(base.length>=4){
-    const latinBase=translitToLatin(base);
-    for(const [name,aliases] of entries){
-      const all=[name,...aliases].map(x=>normalizeSearchText(x)).filter(Boolean);
-      for(const x of all){
-        if(x.length<4)continue;
-        for(const candidate of [x,translitToLatin(x)]){
-          const maxDistance=base.length>=7?2:1;
-          if(Math.abs(candidate.length-latinBase.length)<=maxDistance &&
-             levenshtein(latinBase,candidate)<=maxDistance){
-            return name;
-          }
-        }
-      }
-    }
-  }
-
   return null;
 }
 
 function tokenIsBrand(token){
   const base=normalizeSearchText(token);
-  if(!base)return null;
 
-  // Тип детали не должен никогда считаться маркой.
-  if(Object.prototype.hasOwnProperty.call(partTypeAliases,base))return null;
-  if(base==="м")return "мазда";
-
-  const entries=Object.entries(searchAliases).filter(([brand])=>
-    !Object.prototype.hasOwnProperty.call(partTypeAliases,brand)
-  );
-
-  // Сначала точное совпадение и префикс по ВСЕМ маркам.
-  // Это не позволяет fuzzy-поиску перехватить "хонда" раньше "мазда".
-  for(const [brand,aliases] of entries){
-    const all=[brand,...aliases].map(x=>normalizeSearchText(x)).filter(Boolean);
-    if(all.some(x=>x===base))return brand;
-  }
-
-  if(base.length>=2){
-    for(const [brand,aliases] of entries){
-      const all=[brand,...aliases].map(x=>normalizeSearchText(x)).filter(Boolean);
-      if(all.some(x=>x.length>=base.length && x.startsWith(base)))return brand;
-    }
-  }
-
-  // Fuzzy только после точного поиска и с небольшим порогом.
-  if(base.length>=4){
-    const latinBase=translitToLatin(base);
-    for(const [brand,aliases] of entries){
-      const all=[brand,...aliases].map(x=>normalizeSearchText(x)).filter(Boolean);
-      for(const x of all){
-        if(x.length<4)continue;
-        for(const candidate of [x,translitToLatin(x)]){
-          const maxDistance=base.length>=7?2:1;
-          if(Math.abs(candidate.length-latinBase.length)<=maxDistance &&
-             levenshtein(latinBase,candidate)<=maxDistance){
-            return brand;
-          }
-        }
-      }
+  for(const [brand,aliases] of Object.entries(searchAliases)){
+    if([brand,...aliases].some(x=>normalizeSearchText(x)===base)){
+      return brand;
     }
   }
 
@@ -1870,6 +1976,12 @@ function brandMatchesValue(brand,value){
   const raw=String(value||"");
   const text=normalizeSearchText(raw);
 
+  // Для марки используем только два надёжных источника:
+  // 1) название марки целиком в описании;
+  // 2) код марки в артикуле APXX...
+  //
+  // Короткие коды вроде FD/HD/TY не ищем как обычный текст:
+  // иначе они могут случайно совпасть с частью другого слова.
   const brandNames={
     мазда:["mazda","мазда"],
     хонда:["honda","хонда"],
@@ -1902,28 +2014,47 @@ function brandMatchesValue(brand,value){
     }))
   ];
 
+  // Слово марки в ОПИСАНИИ.
   const words=text.split(/\s+/).filter(Boolean);
   if(names.some(name=>{
     const n=normalizeSearchText(name);
     return words.includes(n);
   })) return true;
 
+  // Код марки в артикуле: AP + код + цифры/буквы.
+  // Например APFD1403 = Ford, APMZ0903 = Mazda.
   const brandCodes={
-    мазда:"MZ", хонда:"HD", тойота:"TY", ниссан:"NS", форд:"FD",
-    ауди:"AU", бмв:"BM", фольксваген:"VW", шевроле:"CH", мерседес:"MB",
-    лексус:"LX", инфинити:"INF", акура:"AC", субару:"SU", киа:"KI",
-    хендай:"HY", опель:"OP", шкода:"SK", пежо:"PG", рено:"REN", фиат:"FT"
+    мазда:"MZ",
+    хонда:"HD",
+    тойота:"TY",
+    ниссан:"NS",
+    форд:"FD",
+    ауди:"AU",
+    бмв:"BM",
+    фольксваген:"VW",
+    шевроле:"CH",
+    мерседес:"MB",
+    лексус:"LX",
+    инфинити:"INF",
+    акура:"AC",
+    субару:"SU",
+    киа:"KI",
+    хендай:"HY",
+    опель:"OP",
+    шкода:"SK",
+    пежо:"PG",
+    рено:"REN",
+    фиат:"FT"
   };
 
   const code=brandCodes[brand];
   if(code){
     const re=new RegExp("\\bAP"+code+"[A-Z0-9]*\\d+\\b","i");
-    if(re.test(raw))return true;
+    if(re.test(raw)) return true;
   }
 
   return false;
 }
-
 function partMatchesValue(part,value){
   const types=codePartTypes(value);
 
@@ -1944,33 +2075,23 @@ function searchScore(queryTokens,text){
     const part=tokenIsPartType(rawToken);
 
     if(brand){
-      if(!brandMatchesValue(brand,text))return 0;
-      score+=170;
+      // Марка должна совпасть строго по названию в этой строке
+      // или по коду марки в её артикуле.
+      if(brandMatchesValue(brand,text)) score+=120;
+      else return 0;
       continue;
     }
 
     if(part){
-      if(!partMatchesValue(part,text))return 0;
-      score+=150;
+      if(partMatchesValue(part,text)) score+=120;
+      else return 0;
       continue;
     }
 
-    if(isArticleLikeToken(rawToken)){
-      if(!articleTokenMatchesText(rawToken,text))return 0;
-      const compact=normalizeSearchText(rawToken).replace(/[^a-z0-9]/g,"");
-      score+=compact.startsWith("ap") ? 520 : 420;
-      continue;
-    }
-
-    if(isNumericSearchToken(rawToken)){
-      if(!numericTokenMatchesText(rawToken,text))return 0;
-      score+=320;
-      continue;
-    }
-
-    if(queryTokenMatchesText(rawToken,text))score+=80;
+    if(queryTokenMatchesText(rawToken,text)) score+=80;
     else return 0;
   }
+
   return score;
 }
 
@@ -2586,8 +2707,6 @@ async function importExcelFile(file){
   }
 })();
 
-function haptic(duration){try{if("vibrate" in navigator)navigator.vibrate(duration||9)}catch(e){}}
-
 document.addEventListener("click",e=>{
   const t=e.target.closest("button,.cell,.search-result-row,.special-cell");
   if(t&&!t.dataset.noHaptic)haptic(7);
@@ -2603,12 +2722,12 @@ document.getElementById("excelFile").addEventListener("change",async e=>{
 
 
 
-// Координаты проходов на исходной схеме 1280×853.
+// Координаты проходов на обрезанной схеме 1277×694.
 // Индикатор ВСЕГДА стоит в самом проходе, там где на плане обозначены S1...S5.
 // По вертикали он совпадает с нужной частью стойки/ячейки.
 // Слева/справа от индикатора — маленький коннектор к соответствующей стороне.
 const planMap = {
-  aisleX: {1:175, 2:412, 3:639, 4:867, 5:1103},
+  aisleX: {1:235, 2:412, 3:639, 4:867, 5:1103},
 
   longY: {
     10:108,
@@ -2629,8 +2748,8 @@ const planMap = {
 
 function planPercent(x,y){
   return {
-    left:(x/1280)*100,
-    top:(y/853)*100
+    left:(x/1277)*100,
+    top:(y/694)*100
   };
 }
 
@@ -2645,15 +2764,46 @@ function openPlanCell(s,l,n){
   openModal(s,l,n);
 }
 
+function planShelfOffset(letter, mapWidth){
+  const l=String(letter||"").toUpperCase();
+  const w=Number(mapWidth||0);
+
+  // ВАЖНО: все буквы одной стороны должны лежать строго на одной
+  // вертикальной линии прохода. Никаких смещений A→E/F→K.
+  // Так маркеры повторяют реальную линию стеллажа на плане.
+  const scale=Math.max(0.78,Math.min(1.08,w/1050));
+  const leftSide=-20;
+  const rightSide=20;
+  const px=("ABCDE".includes(l) ? leftSide : ("FGHJK".includes(l) ? rightSide : 0))*scale;
+  return px;
+}
+
+function planShelfYOffset(letter,mapHeight){
+  // Маркер должен находиться РОВНО на высоте соответствующей
+  // бежевой ячейки. Поэтому вертикального смещения по букве нет.
+  return 0;
+}
+
+function clampPlanPosition(x,y,mapWidth,mapHeight){
+  const isMobile=mapWidth<=700;
+  const halfX=isMobile ? 12 : 24;
+  const labelH=isMobile ? 16 : 30;
+
+  return {
+    x:Math.max(halfX,Math.min(mapWidth-halfX,x)),
+    y:Math.max(3,Math.min(mapHeight-labelH-3,y))
+  };
+}
+
 function renderMiniMap(found=[]){
   const root=document.getElementById("planMarkers");
   const legend=document.getElementById("miniMapLegend");
-  if(!root)return;
+  const plan=document.getElementById("warehousePlan");
+  if(!root || !plan)return;
 
   root.innerHTML="";
 
-  // Подсвечиваем только найденные места в центре прохода.
-  // Никаких горизонтальных/вертикальных палочек — только мягкое свечение.
+  // Группируем по реальной ячейке: одна ячейка = один маркер.
   const groups=new Map();
 
   for(const x of (found||[])){
@@ -2669,28 +2819,51 @@ function renderMiniMap(found=[]){
     }
   }
 
+  const mapWidth=plan.clientWidth || 1277;
+  const mapHeight=plan.clientHeight || 694;
+  const scaleX=mapWidth/1277;
+  const scaleY=mapHeight/694;
+
+  const usedPositions=new Map();
+
   for(const g of groups.values()){
-    const x=planMap.aisleX[g.s];
+    const baseX=planMap.aisleX[g.s]*scaleX;
 
     // Координата по вертикали: 4–10 сверху, 1–3 снизу.
-    let top;
+    let designY;
     if(g.n>=4){
-      // 4 = низ верхней секции, 10 = её верх.
-      top = 335 - ((g.n-4)/6)*247;
+      designY = 335 - ((g.n-4)/6)*247;
     }else{
-      // 1–3 = нижняя секция.
-      top = 670 - ((g.n-1)/2)*165;
+      designY = 670 - ((g.n-1)/2)*165;
     }
+    const baseY=designY*scaleY;
 
-    const p=planPercent(x,top);
+    // Маркер ставим в сам проход: небольшое смещение влево/вправо
+    // показывает сторону стеллажа, но не закрывает его.
+    const rawX=baseX + planShelfOffset(g.l,mapWidth);
+    const rawY=baseY + planShelfYOffset(g.l,mapHeight);
+    let safe=clampPlanPosition(rawX,rawY,mapWidth,mapHeight);
+
+    // Дополнительная защита от редких совпадений координат.
+    const positionKey=`${Math.round(safe.x)}-${Math.round(safe.y)}`;
+    const same=usedPositions.get(positionKey)||0;
+    if(same>0){
+      safe=clampPlanPosition(
+        safe.x,
+        safe.y + same*(mapWidth<=700?10:14),
+        mapWidth,
+        mapHeight
+      );
+    }
+    usedPositions.set(positionKey,same+1);
 
     const marker=document.createElement("div");
     marker.className="plan-marker";
     marker.id=`plan-marker-S${g.s}-${g.l}-${g.n}`;
-    marker.style.left=p.left+"%";
-    marker.style.top=p.top+"%";
-    // Каждый индикатор имеет собственную небольшую область нажатия.
-    marker.style.zIndex=10 + Number(g.n);
+    marker.style.left=safe.x+"px";
+    marker.style.top=safe.y+"px";
+    // Маркеры всегда остаются кликабельными поверх изображения.
+    marker.style.zIndex=20 + Number(g.n);
 
     const highlight=document.createElement("div");
     highlight.className="plan-aisle-highlight";
@@ -2755,14 +2928,43 @@ function activateMapTarget(markerId){
 }
 
 function showResultOnMap(s,l,n){
-  const wrap=document.getElementById("miniMapWrap");
-  if(wrap) wrap.scrollIntoView({behavior:"smooth",block:"start"});
+  const markerId=`plan-marker-${s}-${l}-${n}`;
 
-  // После окончания прокрутки ищем именно маленький индикатор этой ячейки.
+  // Сначала убеждаемся, что план уже отрисован.
+  const marker=document.getElementById(markerId);
+  const plan=document.getElementById("warehousePlan");
+  if(!marker || !plan){
+    setTimeout(()=>showResultOnMap(s,l,n),120);
+    return;
+  }
+
+  // Центрируем в видимой части экрана именно ЖЁЛТУЮ метку,
+  // а не весь блок карты. Это работает и тогда, когда карта
+  // не помещается целиком на экран.
+  const highlight=marker.querySelector(".plan-aisle-highlight");
+  const markerRect=(highlight||marker).getBoundingClientRect();
+  const header=document.querySelector("header");
+  const headerBottom=header ? header.getBoundingClientRect().bottom : 0;
+
+  const visibleTop=Math.max(headerBottom+12, 0);
+  const visibleHeight=Math.max(120, window.innerHeight-visibleTop);
+  const targetScreenY=visibleTop + visibleHeight/2;
+  const markerCenterY=markerRect.top + markerRect.height/2;
+
+  const targetScroll=window.scrollY + markerCenterY - targetScreenY;
+  const maxScroll=Math.max(0,document.documentElement.scrollHeight-window.innerHeight);
+  const safeScroll=Math.max(0,Math.min(maxScroll,targetScroll));
+
+  window.scrollTo({
+    top:safeScroll,
+    behavior:"smooth"
+  });
+
+  // Подсветка включается уже после программной прокрутки,
+  // чтобы собственное событие scroll не сняло её мгновенно.
   setTimeout(()=>{
-    const markerId=`plan-marker-${s}-${l}-${n}`;
     activateMapTarget(markerId);
-  },650);
+  },750);
 }
 
 function doSearch(){
@@ -2786,24 +2988,25 @@ function doSearch(){
         const v=data["S"+s][l][String(n)]||"";
         const a=address("S"+s,l,n);
 
+        // Проверяем каждую запись внутри ячейки отдельно.
+        // Например, запрос mz0903 должен показать только APMZ0903,
+        // а не соседний APMZ0203C из той же ячейки.
         const lines=String(v).split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
         const matchedLines=lines
           .map(line=>({line,score:searchScore(queryTokens,line)}))
-          .filter(x=>x.score>0)
-          .sort((x,y)=>y.score-x.score);
+          .filter(x=>x.score>0);
 
-        // Адресный поиск: S5-A3 / S5 A3 / A3 и т.п.
-        const addressScore=addressQueryScore(raw,a);
+        // Если ищем именно адрес, показываем всю ячейку.
+        const addressMatch=queryTokenMatchesText(raw,a);
         const score=matchedLines.length
           ? Math.max(...matchedLines.map(x=>x.score))
-          : addressScore;
+          : (addressMatch ? 200 : 0);
 
         if(score>0){
           found.push({
             a,v,
             matchedLines:matchedLines.map(x=>x.line),
-            s:"S"+s,l,n:String(n),
-            score:Math.max(score,addressScore)
+            s:"S"+s,l,n:String(n),score
           });
         }
       }
@@ -2814,10 +3017,13 @@ function doSearch(){
     const v=specialData[type]||"";
     const a=type==="resale"?"Перекупной товар":"Брак";
     const score=searchScore(queryTokens,`${a} ${v}`);
-    if(score>0)found.push({a,v,special:type,score});
+
+    if(score>0){
+      found.push({a,v,special:type,score});
+    }
   }
 
-  found.sort((a,b)=>b.score-a.score || a.a.localeCompare(b.a));
+  found.sort((a,b)=>b.score-a.score);
 
   if(!found.length){
     out.innerHTML='<div class="result">Ничего не найдено.</div>';
@@ -2851,19 +3057,29 @@ function doSearch(){
   renderMiniMap(found);
 }
 
-document.getElementById("search").addEventListener("input",()=>{
-  const searchInput=document.getElementById("search");
-  const anchorTop=searchInput.getBoundingClientRect().top;
+const searchInput = document.getElementById("search");
 
+// При появлении/изменении результатов не даём браузеру автоматически
+// прыгать по странице: строка поиска остаётся на том же месте экрана.
+// Ручная прокрутка пользователя при этом не блокируется.
+searchInput.addEventListener("input",()=>{
+  const anchorTop = searchInput.getBoundingClientRect().top;
+
+  // Поиск работает только по уже загруженному в память data.
+  // Firebase write/read здесь вообще не вызывается.
   render();
   doSearch();
 
-  const restoreSearchPosition=()=>{
-    const currentTop=searchInput.getBoundingClientRect().top;
-    const delta=currentTop-anchorTop;
-    if(Math.abs(delta)>0.5)window.scrollBy(0,delta);
+  const restoreSearchPosition = ()=>{
+    const currentTop = searchInput.getBoundingClientRect().top;
+    const delta = currentTop - anchorTop;
+    if(Math.abs(delta) > 0.5){
+      window.scrollBy(0, delta);
+    }
   };
 
+  // DOM обновляется синхронно, но браузер может применить scroll anchoring
+  // уже на следующем кадре — поэтому восстанавливаем позицию дважды.
   requestAnimationFrame(()=>{
     restoreSearchPosition();
     requestAnimationFrame(restoreSearchPosition);
@@ -2897,6 +3113,15 @@ rootRef.on("value",async snap=>{
 
 render();renderSpecial();renderMiniMap([]);initHistoryUi();setAccessUi();
 </script>
+
+<div id="appToast" class="app-toast"></div>
+<nav class="bottom-nav" id="bottomNav">
+  <button onclick="focusAppSearch();haptic()"><span>🔎</span>Поиск</button>
+  <button onclick="scrollToMap();haptic()"><span>🗺️</span>Карта</button>
+  <button onclick="scrollToWarehouseCells();haptic()"><span>📦</span>Склад</button>
+  <button onclick="openHistory();haptic()"><span>🕘</span>История</button>
+  <button id="themeNavBtn" onclick="toggleDarkTheme()"><span>🌙</span>Тёмная</button>
+</nav>
+
 </body>
 </html>
-```
