@@ -366,8 +366,7 @@ body.dark input,body.dark button,body.dark textarea,body.dark .dialog,body.dark 
 body.dark .shelf{background:#151c22;border-color:#46535f}
 body.dark .shelf-title{background:#222c35;color:#edf2f7}
 body.dark .item-meta,body.dark .search-result-map-btn{background:#202a33;color:var(--ink);border-color:#46535f}
-body.dark .search-result-info .article,body.dark .result .article{color:#edf2f7!important}
-body.dark .search-result-row .article{color:#edf2f7!important}
+body.dark .search-result-info .article,body.dark .result .article{color:#edf2f7}
 body.dark .search-result-info strong,body.dark .result strong{color:#58a6ff}
 .bottom-nav{display:none}
 @media(max-width:700px){
@@ -757,12 +756,7 @@ function scrollToWarehouseCells(){
     const query=searchInput.value.trim();
     if(!query)return;
     e.preventDefault();
-
-    // Один раз перерисовываем ячейки с учётом нового запроса,
-    // затем строим результаты и маркеры карты.
-    render();
     doSearch();
-
     setTimeout(()=>scrollToMap(),50);
   });
 })();
@@ -1577,42 +1571,9 @@ function fixKeyboardLayout(value){
 }
 
 function searchTokens(value){
-  const normalized=normalizeSearchText(value);
-  if(!normalized)return [];
-
-  // Сначала сохраняем устойчивые словосочетания как один токен.
-  // Например: "передний бампер", "передній бампер",
-  // "лобовое стекло", "лобове скло", "альфа ромео".
-  const phrases=[
-    "передний бампер","передній бампер",
-    "задний бампер","задній бампер",
-    "левое крыло","ліве крило",
-    "правое крыло","праве крило",
-    "лобовое стекло","лобове скло",
-    "ветровое стекло","вітрове скло",
-    "альфа ромео","land rover","ланд ровер"
-  ].sort((a,b)=>b.length-a.length);
-
-  const tokens=[];
-  let rest=normalized;
-
-  for(const phrase of phrases){
-    if(rest===phrase){
-      tokens.push(phrase);
-      rest="";
-      break;
-    }
-    const re=new RegExp("(^|\\s)"+phrase.replace(/[.*+?^${}()|[\\]\\]/g,"\\\\$&")+"(?=\\s|$)","g");
-    if(re.test(rest)){
-      tokens.push(phrase);
-      rest=rest.replace(re," ").replace(/\\s+/g," ").trim();
-    }
-  }
-
-  if(rest)tokens.push(...rest.split(/\\s+/).filter(Boolean));
-
-  // Убираем дубли, но сохраняем порядок.
-  return [...new Set(tokens)];
+  return normalizeSearchText(value)
+    .split(/\s+/)
+    .filter(Boolean);
 }
 const searchAliases={
   "капот":["капот","hood","bonnet"],
@@ -1622,7 +1583,7 @@ const searchAliases={
   "двери":["дверь","двери","door"],
   "фара":["фара","headlight"],
   "фонарь":["фонарь","фонар","tail light","taillight"],
-  "решетка":["решетка","решётка","решітка","grille","radiator grille"],
+  "решетка":["решетка","решётка","grille"],
 
   "мазда":["мазда","mazda","mz"],
   "хонда":["хонда","honda","hd"],
@@ -1745,21 +1706,6 @@ const bilingualBrandAliases={
   "додж":["додж"]
 };
 for(const [canonical,aliases] of Object.entries(bilingualBrandAliases)){
-  searchAliases[canonical]=[...new Set([...(searchAliases[canonical]||[]),...aliases])];
-}
-
-// Дополнительные варианты написания, которые часто встречаются в выгрузках.
-const extraBrandAliases={
-  "мазда":["mazda","мазда"],
-  "хендай":["hyundai","хендай","хюндай"],
-  "ниссан":["nissan","ниссан","ніссан"],
-  "ауди":["audi","ауди","ауді"],
-  "киа":["kia","киа","кіа"],
-  "инфинити":["infiniti","инфинити","інфініті"],
-  "митсубиси":["mitsubishi","митсубиси","мітсубісі"],
-  "ситроен":["citroen","ситроен","сітроен"]
-};
-for(const [canonical,aliases] of Object.entries(extraBrandAliases)){
   searchAliases[canonical]=[...new Set([...(searchAliases[canonical]||[]),...aliases])];
 }
 
@@ -2949,13 +2895,8 @@ function renderMiniMap(found=[]){
 }
 
 let activeMapTarget = null;
-let mapTargetTimer = null;
 
 function clearMapTarget(){
-  if(mapTargetTimer){
-    clearTimeout(mapTargetTimer);
-    mapTargetTimer=null;
-  }
   if(activeMapTarget){
     const old=document.getElementById(activeMapTarget);
     if(old) old.classList.remove("map-target-active");
@@ -3021,9 +2962,7 @@ function showResultOnMap(s,l,n){
 
   // Подсветка включается уже после программной прокрутки,
   // чтобы собственное событие scroll не сняло её мгновенно.
-  if(mapTargetTimer) clearTimeout(mapTargetTimer);
-  mapTargetTimer=setTimeout(()=>{
-    mapTargetTimer=null;
+  setTimeout(()=>{
     activateMapTarget(markerId);
   },750);
 }
@@ -3120,25 +3059,31 @@ function doSearch(){
 
 const searchInput = document.getElementById("search");
 
-// Живой поиск: результаты появляются уже во время ввода.
-// Главное отличие от старой версии — НЕ вызываем render(), поэтому
-// 450 ячеек склада не пересоздаются на каждую букву.
-// Небольшой debounce оставляет интерфейс плавным на телефоне.
-let searchTimer=null;
+// При появлении/изменении результатов не даём браузеру автоматически
+// прыгать по странице: строка поиска остаётся на том же месте экрана.
+// Ручная прокрутка пользователя при этом не блокируется.
 searchInput.addEventListener("input",()=>{
-  clearTimeout(searchTimer);
+  const anchorTop = searchInput.getBoundingClientRect().top;
 
-  const value=searchInput.value.trim();
-  if(!value){
-    document.getElementById("results").innerHTML="";
-    renderMiniMap([]);
-    updateSearchHighlights([]);
-    return;
-  }
+  // Поиск работает только по уже загруженному в память data.
+  // Firebase write/read здесь вообще не вызывается.
+  render();
+  doSearch();
 
-  searchTimer=setTimeout(()=>{
-    doSearch();
-  },140);
+  const restoreSearchPosition = ()=>{
+    const currentTop = searchInput.getBoundingClientRect().top;
+    const delta = currentTop - anchorTop;
+    if(Math.abs(delta) > 0.5){
+      window.scrollBy(0, delta);
+    }
+  };
+
+  // DOM обновляется синхронно, но браузер может применить scroll anchoring
+  // уже на следующем кадре — поэтому восстанавливаем позицию дважды.
+  requestAnimationFrame(()=>{
+    restoreSearchPosition();
+    requestAnimationFrame(restoreSearchPosition);
+  });
 });
 
 rootRef.on("value",async snap=>{
