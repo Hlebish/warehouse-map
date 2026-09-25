@@ -381,6 +381,112 @@ body.dark .search-result-info strong,body.dark .result strong{color:#58a6ff}
 }
 </style>
 
+
+<style id="search-autocomplete-css">
+.search-box-wrap{
+  position:relative;
+  flex:1 1 100%;
+  min-width:0;
+  z-index:120000;
+}
+.search-box-wrap > #search{
+  display:block;
+  width:100%!important;
+}
+.search-suggestions{
+  position:absolute;
+  left:0;
+  right:0;
+  top:calc(100% + 5px);
+  display:none;
+  max-height:min(440px,60vh);
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  background:var(--card,#fff);
+  color:var(--ink,#18212b);
+  border:1px solid var(--border,#c8d0d8);
+  border-radius:12px;
+  box-shadow:0 12px 28px rgba(0,0,0,.22);
+  padding:5px;
+  z-index:120001;
+}
+.search-suggestions.open{display:block}
+.search-suggestion{
+  width:100%;
+  display:grid;
+  grid-template-columns:30px minmax(0,1fr) auto;
+  align-items:center;
+  gap:9px;
+  border:0;
+  border-radius:9px;
+  background:transparent;
+  color:var(--ink,#18212b);
+  text-align:left;
+  padding:9px 10px;
+  margin:1px 0;
+  cursor:pointer;
+  font:inherit;
+}
+.search-suggestion:hover,
+.search-suggestion.active{
+  background:rgba(31,111,235,.10);
+}
+.search-suggestion-icon{
+  width:26px;
+  height:26px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:8px;
+  background:rgba(31,111,235,.10);
+  font-size:16px;
+}
+.search-suggestion-main{min-width:0;display:flex;flex-direction:column;gap:2px}
+.search-suggestion-title{
+  font-weight:700;
+  font-size:13px;
+  line-height:1.2;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.search-suggestion-sub{
+  color:var(--muted,#66717d);
+  font-size:11px;
+  line-height:1.2;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.search-suggestion-mark{
+  flex:0 0 auto;
+  color:var(--muted,#66717d);
+  border:1px solid var(--border,#c8d0d8);
+  border-radius:999px;
+  padding:3px 7px;
+  font-size:10px;
+  font-weight:700;
+}
+.search-suggestions::-webkit-scrollbar{width:8px}
+.search-suggestions::-webkit-scrollbar-thumb{background:#aeb8c2;border-radius:8px}
+body.dark .search-suggestions{
+  background:#171e25;
+  color:#edf2f7;
+  border-color:#394754;
+  box-shadow:0 14px 34px rgba(0,0,0,.55);
+}
+body.dark .search-suggestion{color:#edf2f7}
+body.dark .search-suggestion:hover,
+body.dark .search-suggestion.active{background:rgba(88,166,255,.14)}
+body.dark .search-suggestion-sub{color:#9ca9b5}
+body.dark .search-suggestion-mark{color:#9ca9b5;border-color:#46535f}
+@media(max-width:700px){
+  .search-suggestion{grid-template-columns:28px minmax(0,1fr) auto;gap:7px;padding:8px}
+  .search-suggestion-title{font-size:12px}
+  .search-suggestion-sub{font-size:10px}
+  .search-suggestion-mark{font-size:9px;padding:3px 6px}
+}
+</style>
 </head>
 <body>
 
@@ -452,7 +558,10 @@ body.dark .search-result-info strong,body.dark .result strong{color:#58a6ff}
 <h1>📦 Интерактивная карта склада</h1>
 <div class="sub">Адрес: улица (S1–S5) → полка (A–E слева / F–K справа)</div><div class="app-userbar"><span id="roleBadge" class="role-badge">👁️ Просмотр</span></div>
 <div class="toolbar">
-<input id="search" type="search" placeholder="🔎 Поиск детали, артикула или адреса…" style="width:100%;min-width:0">
+<div class="search-box-wrap">
+<input id="search" type="search" placeholder="🔎 Поиск детали, артикула или адреса…" style="width:100%;min-width:0" autocomplete="off" aria-autocomplete="list" aria-controls="searchSuggestions" aria-expanded="false">
+<div id="searchSuggestions" class="search-suggestions" role="listbox" aria-label="Варианты поиска"></div>
+</div>
 <button class="primary" onclick="document.getElementById('excelFile').click()">📥 Загрузить Excel</button>
 <button data-edit-only onclick="exportExcel()">📤 Экспорт Excel</button>
 <button data-admin-only onclick="temporaryClearWarehouse()" style="background:#fee2e2;color:#991b1b;border-color:#fca5a5">🗑️ Очистить склад</button><button onclick="openHistory()">🕘 История</button>
@@ -3141,12 +3250,32 @@ function doSearch(){
   renderMiniMap(found);
 }
 
+/* ===== Умные варианты поиска ===== */
+const searchSuggestions=document.getElementById("searchSuggestions");
+let suggestionItems=[];
+let suggestionIndex=-1;
+let suggestionTimer=null;
+function suggestionNormalize(value){return normalizeSearchText(String(value||"")).replace(/\s+/g," ").trim();}
+function suggestionForms(label){const n=suggestionNormalize(label);const forms=new Set([n,translitToLatin(n)]);const keyboard=fixKeyboardLayout(n);if(keyboard!==n)forms.add(suggestionNormalize(keyboard));if(bilingualTokenPairs[n])bilingualTokenPairs[n].forEach(x=>{forms.add(x);forms.add(translitToLatin(x));});return [...forms].filter(Boolean);}
+function suggestionScore(query,label,kind){const q=suggestionNormalize(query);if(!q)return kind==="brand"?70:kind==="part"?65:30;let best=0;for(const form of suggestionForms(label)){if(form===q)best=Math.max(best,1000);else if(form.startsWith(q))best=Math.max(best,900-Math.min(form.length-q.length,80));else if(form.includes(q))best=Math.max(best,760-Math.min(form.indexOf(q)*4,120));else if(q.length>=3){const dist=levenshtein(q,form);const limit=q.length<=4?1:q.length<=7?2:3;if(dist<=limit)best=Math.max(best,680-dist*70);}}if(kind==="article"&&/[a-z]/i.test(q)&&/\d/.test(q))best+=120;if(kind==="brand")best+=20;if(kind==="part")best+=10;return best;}
+function extractSuggestionArticles(){const seen=new Map();for(let s=1;s<=5;s++){const ls=s===1?leftLetters:letters;for(const l of ls){for(let n=1;n<=10;n++){const v=String(data?.["S"+s]?.[l]?.[String(n)]||"");for(const line of v.split(/\r?\n/).map(x=>x.trim()).filter(Boolean)){for(const raw of line.match(/\bAP[A-Za-z0-9-]+\b/g)||[]){const article=raw.replace(/[^A-Za-z0-9-]/g,"");if(article.length>=5&&!seen.has(article))seen.set(article,{label:article,sub:line,kind:"article"});}}}}}return [...seen.values()];}
+function buildSearchSuggestions(query){const q=String(query||"").trim(),out=[],used=new Set();const add=(label,sub,kind,score,icon)=>{const key=String(label).toLowerCase();if(used.has(key)||score<=0)return;used.add(key);out.push({label,sub,kind,score,icon});};for(const brand of Object.keys(searchAliases)){const display=brand.replace(/(^|\s)\S/g,c=>c.toUpperCase());add(display,searchAliases[brand].filter(x=>/^[a-z]/i.test(x)).slice(0,2).join(" · ")||brand,"brand",suggestionScore(q,brand,"brand"),"🚗");}for(const part of Object.keys(partTypeAliases)){const pretty=part.charAt(0).toUpperCase()+part.slice(1);add(pretty,partTypeAliases[part].filter(x=>/^[a-z]/i.test(x)).slice(0,2).join(" · ")||part,"part",suggestionScore(q,part,"part"),"🔧");}if(q.length>=2)for(const item of extractSuggestionArticles()){const sc=suggestionScore(q,item.label,"article");if(sc>0)add(item.label,item.sub,"article",sc,"📦");}out.sort((a,b)=>b.score-a.score||searchCollator.compare(a.label,b.label));return out.slice(0,10);}
+function closeSearchSuggestions(){if(!searchSuggestions)return;searchSuggestions.classList.remove("open");searchSuggestions.innerHTML="";suggestionItems=[];suggestionIndex=-1;document.getElementById("search")?.setAttribute("aria-expanded","false");}
+function renderSearchSuggestions(items){if(!searchSuggestions)return;suggestionItems=items||[];suggestionIndex=-1;if(!suggestionItems.length){closeSearchSuggestions();return;}searchSuggestions.innerHTML=suggestionItems.map((x,i)=>`<button type="button" class="search-suggestion" role="option" aria-selected="false" data-suggestion-index="${i}"><span class="search-suggestion-icon">${x.icon}</span><span class="search-suggestion-main"><span class="search-suggestion-title">${esc(x.label)}</span><span class="search-suggestion-sub">${esc(x.sub||"")}</span></span><span class="search-suggestion-mark">${x.kind==="brand"?"Марка":x.kind==="part"?"Деталь":"Артикул"}</span></button>`).join("");searchSuggestions.classList.add("open");document.getElementById("search")?.setAttribute("aria-expanded","true");}
+function chooseSearchSuggestion(index){const item=suggestionItems[index],input=document.getElementById("search");if(!item||!input)return;input.value=item.label;closeSearchSuggestions();doSearch();requestAnimationFrame(()=>scrollToMap());}
+function moveSuggestion(delta){if(!suggestionItems.length)return;suggestionIndex=(suggestionIndex+delta+suggestionItems.length)%suggestionItems.length;searchSuggestions.querySelectorAll(".search-suggestion").forEach((el,i)=>{const active=i===suggestionIndex;el.classList.toggle("active",active);el.setAttribute("aria-selected",active?"true":"false");});searchSuggestions.querySelector(`.search-suggestion[data-suggestion-index="${suggestionIndex}"]`)?.scrollIntoView({block:"nearest"});}
+
 const searchInput = document.getElementById("search");
+if(searchSuggestions){searchSuggestions.addEventListener("mousedown",e=>e.preventDefault());searchSuggestions.addEventListener("click",e=>{const btn=e.target.closest(".search-suggestion");if(btn)chooseSearchSuggestion(Number(btn.dataset.suggestionIndex));});}
+searchInput?.addEventListener("focus",()=>{clearTimeout(suggestionTimer);suggestionTimer=setTimeout(()=>renderSearchSuggestions(buildSearchSuggestions(searchInput.value)),20);});
+searchInput?.addEventListener("blur",()=>setTimeout(closeSearchSuggestions,140));
+searchInput?.addEventListener("keydown",e=>{if((e.key==="ArrowDown"||e.key==="ArrowUp")&&suggestionItems.length){e.preventDefault();moveSuggestion(e.key==="ArrowDown"?1:-1);return;}if(e.key==="Enter"&&suggestionItems.length&&suggestionIndex>=0){e.preventDefault();chooseSearchSuggestion(suggestionIndex);return;}if(e.key==="Escape")closeSearchSuggestions();});
 
 // При появлении/изменении результатов не даём браузеру автоматически
 // прыгать по странице: строка поиска остаётся на том же месте экрана.
 // Ручная прокрутка пользователя при этом не блокируется.
 searchInput.addEventListener("input",()=>{
+  clearTimeout(suggestionTimer);suggestionTimer=setTimeout(()=>renderSearchSuggestions(buildSearchSuggestions(searchInput.value)),90);
   const anchorTop = searchInput.getBoundingClientRect().top;
 
   // Поиск работает только по уже загруженному в память data.
@@ -3169,6 +3298,9 @@ searchInput.addEventListener("input",()=>{
     requestAnimationFrame(restoreSearchPosition);
   });
 });
+
+window.addEventListener("scroll",()=>{if(searchSuggestions?.classList.contains("open"))closeSearchSuggestions();},{passive:true});
+document.addEventListener("pointerdown",e=>{if(!e.target.closest(".search-box-wrap"))closeSearchSuggestions();});
 
 rootRef.on("value",async snap=>{
  const remote=snap.val();
