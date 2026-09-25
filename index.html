@@ -366,6 +366,8 @@ body.dark input,body.dark button,body.dark textarea,body.dark .dialog,body.dark 
 body.dark .shelf{background:#151c22;border-color:#46535f}
 body.dark .shelf-title{background:#222c35;color:#edf2f7}
 body.dark .item-meta,body.dark .search-result-map-btn{background:#202a33;color:var(--ink);border-color:#46535f}
+body.dark .search-result-info .article,body.dark .result .article{color:#edf2f7}
+body.dark .search-result-info strong,body.dark .result strong{color:#58a6ff}
 .bottom-nav{display:none}
 @media(max-width:700px){
   body{padding-bottom:calc(66px + env(safe-area-inset-bottom))}
@@ -731,6 +733,21 @@ function scrollToWarehouseCells(){
   const x=document.getElementById("map");
   if(x)x.scrollIntoView({behavior:"smooth",block:"start"});
 }
+
+// Enter в поиске подтверждает запрос и переносит к карте склада.
+(function setupSearchEnter(){
+  const searchInput=document.getElementById("search");
+  if(!searchInput)return;
+  searchInput.addEventListener("keydown",e=>{
+    if(e.key!=="Enter")return;
+    const query=searchInput.value.trim();
+    if(!query)return;
+    e.preventDefault();
+    doSearch();
+    setTimeout(()=>scrollToMap(),50);
+  });
+})();
+
 function toggleDarkTheme(){
   const dark=!document.body.classList.contains("dark");
   document.body.classList.toggle("dark",dark);
