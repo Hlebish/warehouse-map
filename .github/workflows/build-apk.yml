@@ -116,6 +116,7 @@ jobs:
             "dependencies": {
               "@capacitor/core": "^8.5.2",
               "@capacitor/android": "^8.5.2",
+              "@capacitor/app": "^8.0.0",
               "@capacitor-firebase/authentication": "^8.0.0"
             },
             "devDependencies": {
@@ -143,6 +144,56 @@ jobs:
           EOF
 
           npx cap add android
+
+          # ========================================================
+          # Android app icon
+          # ========================================================
+          python3 -m venv .icon-venv
+          . .icon-venv/bin/activate
+          python -m pip install --quiet --upgrade pip
+          python -m pip install --quiet Pillow
+
+          python - <<'PY'
+          from PIL import Image
+          from pathlib import Path
+
+          src_path = Path("../app-icon.png")
+          if not src_path.exists():
+              raise SystemExit("ERROR: app-icon.png not found in repository root.")
+
+          src = Image.open(src_path).convert("RGBA")
+
+          sizes = {
+              "mipmap-mdpi": 48,
+              "mipmap-hdpi": 72,
+              "mipmap-xhdpi": 96,
+              "mipmap-xxhdpi": 144,
+              "mipmap-xxxhdpi": 192,
+          }
+
+          res = Path("android/app/src/main/res")
+
+          for folder, size in sizes.items():
+              out_dir = res / folder
+              out_dir.mkdir(parents=True, exist_ok=True)
+
+              icon = src.resize((size, size), Image.Resampling.LANCZOS)
+              icon.save(out_dir / "ic_launcher.png", optimize=True)
+              icon.save(out_dir / "ic_launcher_round.png", optimize=True)
+
+          # Remove Capacitor's default Android 8+ adaptive icon XMLs,
+          # so Android uses the PNGs above.
+          v26 = res / "mipmap-anydpi-v26"
+          for name in ("ic_launcher.xml", "ic_launcher_round.xml"):
+              path = v26 / name
+              if path.exists():
+                  path.unlink()
+
+          print("Android app icon generated successfully.")
+          PY
+
+          deactivate
+          rm -rf .icon-venv
 
           # ========================================================
           # Google Services Gradle plugin
