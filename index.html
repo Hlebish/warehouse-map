@@ -2602,7 +2602,8 @@ async function importExcelFile(file){
         for(const addr of savedAddresses){
           for(const detail of linesOf(imported[addr].join("\n"))){
             const key=itemKey(addr,detail);
-            if(!nextMeta[key]) nextMeta[key]={addedAt:ts,updatedAt:null};
+            const existing=nextMeta[key];
+            if(!existing || !existing.addedAt) nextMeta[key]={addedAt:ts,updatedAt:existing?.updatedAt||null};
           }
         }
         await rootRef.child("itemMeta").set(nextMeta);
