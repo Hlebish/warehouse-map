@@ -883,7 +883,16 @@ function normalizeMeta(m){
  const out={};
  if(m && typeof m==="object"){
    for(const [k,v] of Object.entries(m)){
-     if(v && typeof v==="object") out[/^(?:[0-9a-f]{6})(?:_[0-9a-f]{6})*$/i.test(k)?k:safeFirebaseKey(k)]={addedAt:v.addedAt||null,updatedAt:v.updatedAt||null};
+     let decoded=String(k),key=safeFirebaseKey(k);
+     // Older imports could encode an itemKey more than once. Decode until
+     // the canonical address|detail key is recovered, then encode it once.
+     for(let i=0;i<8&&/^(?:[0-9a-f]{6})(?:_[0-9a-f]{6})*$/i.test(decoded);i++){
+       const next=decoded.split("_").map(part=>String.fromCodePoint(parseInt(part,16))).join("");
+       if(next===decoded)break;
+       decoded=next;
+       if(/^S[1-5]-[A-K]-\d+\|/.test(decoded)){key=safeFirebaseKey(decoded);break;}
+     }
+     if(v && typeof v==="object") out[key]={addedAt:v.addedAt||null,updatedAt:v.updatedAt||null};
    }
  }
  return out;
