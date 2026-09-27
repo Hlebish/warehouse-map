@@ -883,7 +883,7 @@ function normalizeMeta(m){
  const out={};
  if(m && typeof m==="object"){
    for(const [k,v] of Object.entries(m)){
-     if(v && typeof v==="object") out[safeFirebaseKey(k)]={addedAt:v.addedAt||null,updatedAt:v.updatedAt||null};
+     if(v && typeof v==="object") out[/^(?:[0-9a-f]{6})(?:_[0-9a-f]{6})*$/i.test(k)?k:safeFirebaseKey(k)]={addedAt:v.addedAt||null,updatedAt:v.updatedAt||null};
    }
  }
  return out;
