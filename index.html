@@ -877,21 +877,33 @@ function safeFirebaseKey(value){
     .join("_");
 }
 function itemKey(addr,line){
-  return safeFirebaseKey(addr+"|"+String(line||"").trim());
+  const value=String(addr)+"|"+String(line||"").trim();
+  // Keep Firebase child keys short; long imported descriptions can exceed
+  // Realtime Database's 768-byte key-path limit when encoded characterwise.
+  let h1=2166136261,h2=2246822519;
+  for(let i=0;i<value.length;i++){
+    const code=value.charCodeAt(i);
+    h1=Math.imul(h1^code,16777619);
+    h2=Math.imul(h2^code,3266489917);
+  }
+  return "m"+(h1>>>0).toString(16).padStart(8,"0")+(h2>>>0).toString(16).padStart(8,"0");
 }
 function normalizeMeta(m){
  const out={};
  if(m && typeof m==="object"){
    for(const [k,v] of Object.entries(m)){
-     let decoded=String(k),key=safeFirebaseKey(k);
+     let decoded=String(k),key=/^m[0-9a-f]{16}$/i.test(k)?k:safeFirebaseKey(k);
      // Older imports could encode an itemKey more than once. Decode until
      // the canonical address|detail key is recovered, then encode it once.
      for(let i=0;i<8&&/^(?:[0-9a-f]{6})(?:_[0-9a-f]{6})*$/i.test(decoded);i++){
        const next=decoded.split("_").map(part=>String.fromCodePoint(parseInt(part,16))).join("");
        if(next===decoded)break;
        decoded=next;
-       if(/^S[1-5]-[A-K]-\d+\|/.test(decoded)){key=safeFirebaseKey(decoded);break;}
+       const match=decoded.match(/^(S[1-5]-[A-K]-\d+)\|([\s\S]*)$/);
+       if(match){key=itemKey(match[1],match[2]);break;}
      }
+     const rawMatch=decoded.match(/^(S[1-5]-[A-K]-\d+)\|([\s\S]*)$/);
+     if(rawMatch)key=itemKey(rawMatch[1],rawMatch[2]);
      if(v && typeof v==="object") out[key]={addedAt:v.addedAt||null,updatedAt:v.updatedAt||null};
    }
  }
