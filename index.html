@@ -2381,40 +2381,38 @@ function detectExcelColumns(rows){
   // а настоящие заголовки находятся ниже. В текущем файле:
   // B = Номенклатура, C = Артикул, D = Місце зберігання.
   // Поэтому нельзя брать rows[0] как строку заголовков.
-  const result={description:-1,article:-1,location:-1,headerRow:-1};
   const maxScan=Math.min(rows.length,40);
 
   const normalizeHeader=v=>String(v??"")
     .toLowerCase()
     .replace(/ё/g,"е")
-    .replace(/і/g,"и")
-    .replace(/ї/g,"и")
-    .replace(/є/g,"е")
     .replace(/\s+/g," ")
     .trim();
 
   for(let r=0;r<maxScan;r++){
     const row=rows[r]||[];
+    // Build a candidate from this row only. Report descriptions above the
+    // table mention words like "Артикул" and "Місце зберігання"; combining
+    // matches across those rows mistakes report metadata for column headers.
+    const candidate={description:-1,article:-1,location:-1,headerRow:r};
     for(let c=0;c<row.length;c++){
       const h=normalizeHeader(row[c]);
       if(!h)continue;
 
-      if(result.description<0 && (/^номенклатура$/.test(h)||/описан|наимен|назван/.test(h)))
-        result.description=c;
-      if(result.article<0 && (/^артикул$/.test(h)||/артикул|код/.test(h)))
-        result.article=c;
-      if(result.location<0 && (/місце зберігання|место хранения|ячейк|адрес|хранен/.test(h)))
-        result.location=c;
+      if(candidate.description<0 && /^(?:номенклатура|описание|опис|наименование|название)$/.test(h))
+        candidate.description=c;
+      if(candidate.article<0 && /^(?:артикул|код|код товара|код номенклатуры)$/.test(h))
+        candidate.article=c;
+      if(candidate.location<0 && /^(?:місце зберігання|место хранения|адрес хранения|ячейка хранения)$/.test(h))
+        candidate.location=c;
     }
 
-    if(result.description>=0 && result.article>=0 && result.location>=0){
-      result.headerRow=r;
-      return result;
-    }
+    if(candidate.description>=0 && candidate.article>=0 && candidate.location>=0)return candidate;
   }
 
   // Запасной вариант: ищем колонку адреса по реальным значениям,
   // а остальные две колонки берём рядом с ней.
+  const result={description:-1,article:-1,location:-1,headerRow:-1};
   for(let c=0;c<Math.max(...rows.slice(0,Math.min(rows.length,20)).map(r=>(r||[]).length),0);c++){
     const sample=rows.slice(0,Math.min(rows.length,20))
       .map(r=>String(r?.[c]??"").toUpperCase())
