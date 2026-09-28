@@ -177,6 +177,8 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
 #unaddressedModal{position:fixed;inset:0;background:#0007;display:none;align-items:center;justify-content:center;padding:16px;z-index:10020}
 #unaddressedModal .dialog{width:min(760px,100%);max-height:calc(100vh - 32px);overflow:auto}
 .unaddressed-row{border:1px solid #d7dee6;border-radius:9px;padding:10px;margin:7px 0;background:#fff;font-size:13px}
+.unaddressed-row-main{cursor:pointer}.unaddressed-row-main:hover{background:#f4f8ff}
+.unaddressed-assign{margin-top:8px;padding:7px 10px;font-size:12px}
 .unaddressed-row strong{color:#1264d8}.unaddressed-row small{display:block;color:var(--muted);margin-top:5px}
 body.dark .unaddressed-row{background:#171e25;color:var(--ink);border-color:#394754}
 .history-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}.history-head h2{margin:0}.history-close{flex:0 0 auto;width:40px;height:40px;padding:0;border:1px solid var(--border);border-radius:10px;background:var(--card);color:var(--ink);font-size:28px;line-height:1;display:flex;align-items:center;justify-content:center}.history-close:hover{background:#f1f3f5}
@@ -1183,7 +1185,60 @@ function renderUnaddressedList(){
  found.sort((a,b)=>String(a.article||a.description).localeCompare(String(b.article||b.description),"ru"));
  summary.textContent=query?`Найдено: ${found.length} из ${all.length}`:`Всего деталей без адреса: ${all.length}`;
  if(!found.length){list.innerHTML='<div class="result">По этому запросу ничего не найдено.</div>';return;}
- list.innerHTML=found.map(item=>`<div class="unaddressed-row"><strong>${esc(item.article||"Без артикула")}</strong>${item.description?`<div>${esc(item.description)}</div>`:""}<small>${esc(item.reason||"нет адреса хранения")}${item.fileName?` · ${esc(item.fileName)}`:""}${item.row?` · строка Excel ${item.row}`:""}</small></div>`).join("");
+ list.innerHTML=found.map(item=>`<div class="unaddressed-row"><div class="unaddressed-row-main" role="button" tabindex="0" onclick="assignUnaddressedItem('${esc(item.key)}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();assignUnaddressedItem('${esc(item.key)}')}"><strong>${esc(item.article||"Без артикула")}</strong>${item.description?`<div>${esc(item.description)}</div>`:""}<small>${esc(item.reason||"нет адреса хранения")}${item.fileName?` · ${esc(item.fileName)}`:""}${item.row?` · строка Excel ${item.row}`:""}</small><button class="unaddressed-assign" type="button" onclick="event.stopPropagation();assignUnaddressedItem('${esc(item.key)}')">📍 Указать адрес</button></div></div>`).join("");
+}
+async function assignUnaddressedItem(key){
+ if(!canEdit()){alert("Назначать адрес могут только пользователи с правом редактирования.");return;}
+ const item=unaddressedItems?.[key];
+ if(!item)return;
+ const entered=prompt(`Укажите адрес ячейки для ${item.article||item.description}.\nНапример: S5, A3`);
+ if(entered===null)return;
+ const addresses=parseExcelLocations(entered);
+ if(!addresses.length){alert("Не удалось распознать адрес. Введите его в формате S5, A3.");return;}
+ const content=makeImportedCellContent(item.description,item.article);
+ if(!content){alert("У этой детали нет артикула и описания.");return;}
+ const updates={},nextCells={};
+ for(const addr of addresses){
+  const match=addr.match(/^S([1-5])-([A-K])-(\d+)$/);
+  if(!match)continue;
+  const [,street,shelf,number]=match;
+  const currentValue=String(data[`S${street}`]?.[shelf]?.[number]||"");
+  const existing=linesOf(currentValue);
+  if(!existing.includes(content))existing.push(content);
+  updates[`cells/S${street}/${shelf}/${number}`]=existing.join("\n");
+  nextCells[`S${street}/${shelf}/${number}`]=existing.join("\n");
+ }
+ if(!Object.keys(updates).length){alert("Выбранные адреса не подходят для карты склада.");return;}
+ updates[`unaddressed/${key}`]=null;
+ const ts=nowTs();
+ const nextMeta={...itemMeta};
+ for(const addr of addresses){
+  const match=addr.match(/^S([1-5])-([A-K])-(\d+)$/);
+  if(!match)continue;
+  const [,street,shelf,number]=match,fullAddress=address(`S${street}`,shelf,number);
+  const existingMeta=nextMeta[itemKey(fullAddress,content)];
+  nextMeta[itemKey(fullAddress,content)]=existingMeta||{addedAt:ts,updatedAt:null};
+ }
+ updates.itemMeta=nextMeta;
+ try{
+  await rootRef.update(updates);
+  for(const [path,value] of Object.entries(nextCells)){
+   const [,street,shelf,number]=path.match(/^(S[1-5])\/([A-K])\/(\d+)$/);
+   data[street][shelf][number]=value;
+  }
+  itemMeta=nextMeta;
+  delete unaddressedItems[key];
+  setLocal();
+  updateUnaddressedButton();
+  render();
+  renderUnaddressedList();
+  doSearch();
+  await writeHistory({type:"add",detail:content,article:item.article,address:addresses.join(", "),fileName:item.fileName,row:item.row});
+  showAppToast(`✓ ${item.article||"Деталь"} добавлена: ${addresses.join(", ")}`);
+ }catch(error){
+  console.error("Не удалось назначить адрес детали:",error);
+  alert("Не удалось сохранить адрес. Проверьте подключение и попробуйте ещё раз.");
+ }
 }
 function openUnaddressedModal(query=""){
  const modal=document.getElementById("unaddressedModal");
@@ -1236,7 +1291,7 @@ function shelf(box,s,l,parent){
   const match=q&&(a.toLowerCase().includes(q)||val.toLowerCase().includes(q));
   const c=document.createElement("button");
   c.className="cell"+(val.trim()?" filled":"")+(match?" search-hit":"");
-  c.id=`cell-S${s}-${l}-${n}`;
+  c.id=`cell-S${s}-${l}-${n}`;c.dataset.searchText=`${a} ${val}`.toLowerCase();
   c.title=a+(val.trim()?` — ${val}`:"");c.innerHTML=`<b>${n}</b>`;
   c.onclick=()=>openModal("S"+s,l,String(n));cells.appendChild(c);
  }
@@ -3225,28 +3280,16 @@ const searchInput = document.getElementById("search");
 // При появлении/изменении результатов не даём браузеру автоматически
 // прыгать по странице: строка поиска остаётся на том же месте экрана.
 // Ручная прокрутка пользователя при этом не блокируется.
+let searchRenderTimer=null;
 searchInput.addEventListener("input",()=>{
-  const anchorTop = searchInput.getBoundingClientRect().top;
-
-  // Поиск работает только по уже загруженному в память data.
-  // Firebase write/read здесь вообще не вызывается.
-  render();
-  doSearch();
-
-  const restoreSearchPosition = ()=>{
-    const currentTop = searchInput.getBoundingClientRect().top;
-    const delta = currentTop - anchorTop;
-    if(Math.abs(delta) > 0.5){
-      window.scrollBy(0, delta);
-    }
-  };
-
-  // DOM обновляется синхронно, но браузер может применить scroll anchoring
-  // уже на следующем кадре — поэтому восстанавливаем позицию дважды.
-  requestAnimationFrame(()=>{
-    restoreSearchPosition();
-    requestAnimationFrame(restoreSearchPosition);
+  const query=normalizeSearchText(searchInput.value);
+  // Подсветка ячеек выполняется без полной перерисовки карты при каждом символе.
+  document.querySelectorAll(".cell").forEach(cell=>{
+    const hit=!!query&&cell.dataset.searchText.includes(query);
+    cell.classList.toggle("search-hit",hit);
   });
+  clearTimeout(searchRenderTimer);
+  searchRenderTimer=setTimeout(doSearch,180);
 });
 
 rootRef.on("value",async snap=>{
