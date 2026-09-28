@@ -401,8 +401,8 @@ body.dark .search-result-info strong,body.dark .result strong{color:#58a6ff}
 .map-zoom-controls{display:none}
 @media(max-width:700px){
   .map-zoom-controls{
-    display:flex;position:absolute;right:10px;bottom:10px;
-    z-index:100;gap:6px;
+    display:flex;position:static;justify-content:flex-end;
+    margin:8px auto 0;gap:6px;
   }
   .map-zoom-controls button{
     width:40px;height:40px;padding:0;border-radius:10px;
@@ -511,11 +511,11 @@ body.dark .search-result-info strong,body.dark .result strong{color:#58a6ff}
       <img src="warehouse-plan.png" alt="Планировка склада">
       <div id="planMarkers"></div>
     </div>
-    <div class="map-zoom-controls">
-      <button type="button" onclick="mapZoomOut()">−</button>
-      <button type="button" onclick="mapZoomReset()">↺</button>
-      <button type="button" onclick="mapZoomIn()">+</button>
-    </div>
+  </div>
+  <div class="map-zoom-controls">
+    <button type="button" onclick="mapZoomOut()">−</button>
+    <button type="button" onclick="mapZoomReset()">↺</button>
+    <button type="button" onclick="mapZoomIn()">+</button>
   </div>
 </div>
 <div id="stats" class="stats"></div>
