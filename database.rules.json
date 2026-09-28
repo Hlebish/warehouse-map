@@ -1,0 +1,32 @@
+{
+  "rules": {
+    "warehouse": {
+      ".read": "auth != null",
+      "cells": {
+        ".write": "auth != null && (auth.token.email == 'glebur172@gmail.com' || auth.token.email == 'mashakashner2002@gmail.com' || auth.token.email == 'motroyl@gmail.com' || auth.token.email == 'hlebish7@gmail.com')"
+      },
+      "special": {
+        ".write": "auth != null && (auth.token.email == 'glebur172@gmail.com' || auth.token.email == 'mashakashner2002@gmail.com' || auth.token.email == 'motroyl@gmail.com' || auth.token.email == 'hlebish7@gmail.com')"
+      },
+      "itemMeta": {
+        ".write": "auth != null && (auth.token.email == 'glebur172@gmail.com' || auth.token.email == 'mashakashner2002@gmail.com' || auth.token.email == 'motroyl@gmail.com' || auth.token.email == 'hlebish7@gmail.com')"
+      },
+      "unaddressed": {
+        ".write": "auth != null && (auth.token.email == 'glebur172@gmail.com' || auth.token.email == 'mashakashner2002@gmail.com' || auth.token.email == 'motroyl@gmail.com' || auth.token.email == 'hlebish7@gmail.com')"
+      },
+      "unaddressedTrash": {
+        ".write": "auth != null && (auth.token.email == 'glebur172@gmail.com' || auth.token.email == 'mashakashner2002@gmail.com' || auth.token.email == 'motroyl@gmail.com' || auth.token.email == 'hlebish7@gmail.com')"
+      },
+      "undo": {
+        "lastImport": {
+          ".write": "auth != null && (auth.token.email == 'glebur172@gmail.com' || auth.token.email == 'mashakashner2002@gmail.com' || auth.token.email == 'motroyl@gmail.com' || auth.token.email == 'hlebish7@gmail.com')"
+        }
+      },
+      "history": {
+        "$event": {
+          ".write": "auth != null && (auth.token.email == 'glebur172@gmail.com' || auth.token.email == 'mashakashner2002@gmail.com' || auth.token.email == 'motroyl@gmail.com' || auth.token.email == 'hlebish7@gmail.com')"
+        }
+      }
+    }
+  }
+}
