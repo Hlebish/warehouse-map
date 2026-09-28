@@ -606,14 +606,17 @@ body.dark .search-result-info strong,body.dark .result strong{color:#58a6ff}
   </select>
 </div>
 <div id="historySummary" style="margin:8px 0;color:var(--muted);font-size:12px"></div><div id="historyList">Загрузка…</div>
-<div class="actions"><button onclick="closeHistory()">Закрыть</button></div>
+<div class="actions"><button id="undoLastImportBtn" data-edit-only type="button" onclick="undoLastImport()" disabled>↩ Отменить последний импорт</button><button onclick="closeHistory()">Закрыть</button></div>
 </div></div>
 
 <div id="unaddressedModal"><div class="dialog">
 <div class="history-head"><h2>📦 Детали без адреса</h2><button class="history-close" type="button" aria-label="Закрыть список" onclick="closeUnaddressedModal()">×</button></div>
 <div class="history-toolbar"><input id="unaddressedSearch" type="search" placeholder="Найти артикул или деталь…"></div>
+<div class="history-toolbar" style="justify-content:flex-end"><button type="button" onclick="openUnaddressedTrash()">🗑 Корзина <span id="unaddressedTrashCount">0</span></button><button id="unaddressedBackBtn" type="button" style="display:none" onclick="closeUnaddressedTrash()">← К списку деталей</button></div>
 <div id="unaddressedSummary" style="margin:8px 0;color:var(--muted);font-size:12px"></div>
 <div id="unaddressedList"></div>
+<div id="unaddressedTrashSummary" style="display:none;margin:8px 0;color:var(--muted);font-size:12px"></div>
+<div id="unaddressedTrashList" style="display:none"></div>
 <div class="actions"><button onclick="closeUnaddressedModal()">Закрыть</button></div>
 </div></div>
 
@@ -850,6 +853,7 @@ if(firebaseStarted && auth){
     }
     setAccessUi();
     initHistoryUi();
+    if(user)startWarehouseSync();
   });
 }
 
@@ -861,8 +865,9 @@ function applyAccessMode(){
 const letters=["A","B","C","D","E","F","G","H","J","K"];
 const leftLetters=["A","B","C","D","E"];
 const rightLetters=["F","G","H","J","K"];
-let data=createEmptyData(), specialData={resale:"",defect:""}, itemMeta={}, unaddressedItems={}, current=null, currentSpecial=null;
+let data=createEmptyData(), specialData={resale:"",defect:""}, itemMeta={}, unaddressedItems={}, deletedUnaddressedItems={}, lastImportUndo=null, current=null, currentSpecial=null;
 let remoteLoaded=false;
+let warehouseSyncStarted=false,warehouseSyncStarting=false;
 
 function createEmptyData(){
  const d={};
@@ -875,8 +880,9 @@ function hasLocalData(){
  const d=JSON.parse(localStorage.getItem("warehouseMapData")||"null");
  const sp=JSON.parse(localStorage.getItem("warehouseSpecialData")||"null");
  const ua=JSON.parse(localStorage.getItem("warehouseUnaddressed")||"null");
+ const trash=JSON.parse(localStorage.getItem("warehouseUnaddressedTrash")||"null");
  return !!(d && Object.values(d).some(st=>Object.values(st).some(sh=>Object.values(sh).some(v=>String(v||"").trim())))) ||
-        !!(sp && Object.values(sp).some(v=>String(v||"").trim())) || !!(ua && Object.keys(ua).length);
+        !!(sp && Object.values(sp).some(v=>String(v||"").trim())) || !!(ua && Object.keys(ua).length) || !!(trash&&Object.keys(trash).length);
 }
 function normalizeData(d){
  const out=createEmptyData();
@@ -940,6 +946,15 @@ function normalizeUnaddressed(items){
  }
  return out;
 }
+function normalizeUnaddressedTrash(items){
+ const out={};
+ for(const [key,value] of Object.entries(items||{})){
+  if(!value||typeof value!=="object")continue;
+  const item=normalizeUnaddressed({[key]:value})[key];
+  if(item)out[key]={...item,deletedAt:Number(value.deletedAt)||null,deletedBy:String(value.deletedBy||"")};
+ }
+ return out;
+}
 function nowTs(){return Date.now();}
 function formatDate(ts){
  if(!ts)return "не зафиксирована";
@@ -985,6 +1000,7 @@ function setAccessUi(){
     badge.textContent=roleLabel(role)+(email?" · "+email:"");
     badge.title=email;
   }
+  updateUndoLastImportButton();
 }
 
 function recordMetaChanges(addr,oldValue,newValue){
@@ -1035,6 +1051,57 @@ async function writeHistory(event){
   }
 }
 
+function updateUndoLastImportButton(){
+ const button=document.getElementById("undoLastImportBtn");
+ if(button)button.disabled=!canEdit()||!lastImportUndo;
+}
+
+async function undoLastImport(){
+ if(!canEdit()){alert("Отменять импорт могут только пользователи с правом редактирования.");return;}
+ try{
+  const snap=await rootRef.child("undo/lastImport").once("value");
+  const backup=snap.val();
+  if(!backup){lastImportUndo=null;updateUndoLastImportButton();alert("Нет сохранённого импорта, который можно отменить.");return;}
+  const label=backup.fileName||"последний Excel";
+  if(!confirm(`Отменить импорт «${label}» и вернуть прежнее содержимое ячеек?`))return;
+  const cellsSnap=await rootRef.child("cells").once("value"),remoteCells=cellsSnap.val()||{};
+  const updates={};
+  for(const [addr,expected] of Object.entries(backup.cellsAfter||{})){
+   const match=addr.match(/^S([1-5])-([A-K])-(\d+)$/);
+   if(!match)continue;
+   const [,street,shelf,number]=match;
+   const currentValue=String(remoteCells?.[`S${street}`]?.[shelf]?.[number]||"");
+   if(currentValue!==String(expected||"")){
+    alert(`Отмена остановлена: ячейка ${addr} была изменена после импорта. Сначала проверьте её содержимое.`);
+    return;
+   }
+   updates[`cells/S${street}/${shelf}/${number}`]=String(backup.cellsBefore?.[addr]||"");
+  }
+  for(const [key,value] of Object.entries(backup.metadataBefore||{}))updates[`itemMeta/${key}`]=value||null;
+  for(const key of Object.values(backup.unaddressedKeys||{}))updates[`unaddressed/${key}`]=null;
+  if(!Object.keys(updates).length){alert("В точке отмены нет изменений.");return;}
+  updates["undo/lastImport"]=null;
+  await rootRef.update(updates);
+  for(const [addr,value] of Object.entries(backup.cellsBefore||{})){
+   const match=addr.match(/^S([1-5])-([A-K])-(\d+)$/);if(!match)continue;
+   const [,street,shelf,number]=match;data[`S${street}`][shelf][number]=String(value||"");
+  }
+  for(const [key,value] of Object.entries(backup.metadataBefore||{})){
+   if(value)itemMeta[key]=value;else delete itemMeta[key];
+  }
+  for(const key of Object.values(backup.unaddressedKeys||{}))delete unaddressedItems[key];
+  lastImportUndo=null;setLocal();updateUndoLastImportButton();updateUnaddressedButton();
+  render();doSearch();
+  if(document.getElementById("unaddressedModal")?.style.display==="flex")renderUnaddressedList();
+  await writeHistory({type:"undoImport",detail:`Отменён импорт Excel: ${label}`,fileName:label});
+  if(document.getElementById("historyModal")?.style.display==="flex")await openHistory();
+  showAppToast("Импорт отменён, прежние данные восстановлены");
+ }catch(error){
+  console.error("Не удалось отменить импорт:",error);
+  alert("Не удалось отменить импорт. Проверьте подключение и попробуйте ещё раз.");
+ }
+}
+
 function historyTypeLabel(type){
   return ({
     move:"📦 Перемещение",
@@ -1043,7 +1110,9 @@ function historyTypeLabel(type){
     edit:"✏️ Изменение",
     import:"📥 Импорт Excel",
     importExcel:"📥 Импорт Excel",
-    clear:"🗑️ Очистка склада"
+    clear:"🗑️ Очистка склада",
+    restore:"♻️ Восстановление",
+    undoImport:"↩ Отмена импорта"
   })[type]||"Событие";
 }
 
@@ -1189,6 +1258,46 @@ function renderUnaddressedList(){
  if(!found.length){list.innerHTML='<div class="result">По этому запросу ничего не найдено.</div>';return;}
  list.innerHTML=found.map(item=>`<div class="unaddressed-row"><div class="unaddressed-row-main" role="button" tabindex="0" onclick="assignUnaddressedItem('${esc(item.key)}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();assignUnaddressedItem('${esc(item.key)}')}"><strong>${esc(item.article||"Без артикула")}</strong>${item.description?`<div>${esc(item.description)}</div>`:""}<small>${esc(item.reason||"нет адреса хранения")}${item.fileName?` · ${esc(item.fileName)}`:""}${item.row?` · строка Excel ${item.row}`:""}</small><button class="unaddressed-assign" type="button" onclick="event.stopPropagation();assignUnaddressedItem('${esc(item.key)}')">📍 Указать адрес</button><button class="unaddressed-delete" type="button" onclick="event.stopPropagation();deleteUnaddressedItem('${esc(item.key)}')">🗑 Удалить</button></div></div>`).join("");
 }
+function updateUnaddressedTrashCount(){
+ const count=document.getElementById("unaddressedTrashCount");
+ if(count)count.textContent=String(Object.keys(deletedUnaddressedItems||{}).length);
+}
+function openUnaddressedTrash(){
+ document.getElementById("unaddressedSearch").style.display="none";
+ document.getElementById("unaddressedSummary").style.display="none";
+ document.getElementById("unaddressedList").style.display="none";
+ document.getElementById("unaddressedTrashSummary").style.display="block";
+ document.getElementById("unaddressedTrashList").style.display="block";
+ document.getElementById("unaddressedBackBtn").style.display="";
+ renderUnaddressedTrash();
+}
+function closeUnaddressedTrash(){
+ document.getElementById("unaddressedSearch").style.display="";
+ document.getElementById("unaddressedSummary").style.display="";
+ document.getElementById("unaddressedList").style.display="";
+ document.getElementById("unaddressedTrashSummary").style.display="none";
+ document.getElementById("unaddressedTrashList").style.display="none";
+ document.getElementById("unaddressedBackBtn").style.display="none";
+}
+function renderUnaddressedTrash(){
+ const list=document.getElementById("unaddressedTrashList"),summary=document.getElementById("unaddressedTrashSummary");
+ if(!list||!summary)return;
+ const items=Object.entries(deletedUnaddressedItems||{}).map(([key,item])=>({key,...item}));
+ summary.textContent=`В корзине: ${items.length}. Записи можно восстановить.`;
+ list.innerHTML=items.length?items.map(item=>`<div class="unaddressed-row"><strong>${esc(item.article||"Без артикула")}</strong>${item.description?`<div>${esc(item.description)}</div>`:""}<small>Удалено: ${esc(item.deletedAt?formatDate(item.deletedAt):"дата неизвестна")}${item.fileName?` · ${esc(item.fileName)}`:""}${item.row?` · строка Excel ${item.row}`:""}</small><button type="button" class="unaddressed-assign" onclick="restoreUnaddressedItem('${esc(item.key)}')">♻️ Восстановить</button></div>`).join(""):'<div class="result">Корзина пуста.</div>';
+}
+async function restoreUnaddressedItem(key){
+ if(!canEdit()){alert("Восстанавливать записи могут только пользователи с правом редактирования.");return;}
+ const item=deletedUnaddressedItems?.[key];if(!item)return;
+ try{
+  const restored={article:item.article,description:item.description,reason:item.reason,fileName:item.fileName,row:item.row,importedAt:item.importedAt};
+  await rootRef.update({[`unaddressed/${key}`]:restored,[`unaddressedTrash/${key}`]:null});
+  delete deletedUnaddressedItems[key];unaddressedItems[key]=restored;setLocal();
+  updateUnaddressedButton();updateUnaddressedTrashCount();renderUnaddressedList();renderUnaddressedTrash();doSearch();
+  await writeHistory({type:"restore",detail:[item.article,item.description].filter(Boolean).join(" — ")||"Запись без адреса",article:item.article||""});
+  showAppToast("Запись восстановлена");
+ }catch(error){console.error("Не удалось восстановить запись:",error);alert("Не удалось восстановить запись. Проверьте подключение и попробуйте ещё раз.");}
+}
 async function deleteUnaddressedItem(key){
  if(!canEdit()){alert("Удалять записи могут только пользователи с правом редактирования.");return;}
  const item=unaddressedItems?.[key];
@@ -1196,11 +1305,15 @@ async function deleteUnaddressedItem(key){
  const label=[item.article,item.description].filter(Boolean).join(" — ")||"эту запись";
  if(!confirm(`Удалить «${label}» из списка деталей без адреса?`))return;
  try{
-  await rootRef.child("unaddressed").child(key).remove();
+  const deleted={...item,deletedAt:nowTs(),deletedBy:currentUserEmail()};
+  await rootRef.update({[`unaddressed/${key}`]:null,[`unaddressedTrash/${key}`]:deleted});
   delete unaddressedItems[key];
+  deletedUnaddressedItems[key]=deleted;
   setLocal();
   updateUnaddressedButton();
+  updateUnaddressedTrashCount();
   renderUnaddressedList();
+  renderUnaddressedTrash();
   doSearch();
   await writeHistory({type:"remove",detail:label,article:item.article||"",fileName:item.fileName||"",row:item.row||null});
   showAppToast("Запись удалена из списка деталей без адреса");
@@ -1266,6 +1379,7 @@ function openUnaddressedModal(query=""){
  const modal=document.getElementById("unaddressedModal");
  if(!modal)return;
  document.getElementById("unaddressedSearch").value=String(query||"");
+ closeUnaddressedTrash();
  renderUnaddressedList();
  modal.style.display="flex";
 }
@@ -1276,12 +1390,15 @@ function closeUnaddressedModal(){
 function initUnaddressedUi(){
  document.getElementById("unaddressedSearch")?.addEventListener("input",renderUnaddressedList);
  updateUnaddressedButton();
+ updateUnaddressedTrashCount();
 }
 function setLocal(){
  localStorage.setItem("warehouseMapData",JSON.stringify(data));
  localStorage.setItem("warehouseSpecialData",JSON.stringify(specialData));
  localStorage.setItem("warehouseItemMeta",JSON.stringify(itemMeta));
  localStorage.setItem("warehouseUnaddressed",JSON.stringify(unaddressedItems));
+ localStorage.setItem("warehouseUnaddressedTrash",JSON.stringify(deletedUnaddressedItems));
+ localStorage.setItem("warehouseLastImportUndo",JSON.stringify(lastImportUndo));
 }
 function setSync(text,cls){const e=document.getElementById("syncStatus");e.textContent=text;e.className="sync "+(cls||"");}
 
@@ -1731,16 +1848,22 @@ async function temporaryClearWarehouse(){
 async function clearAll(){
  if(!confirm("Удалить содержимое всех видимых 450 ячеек?"))return;
  data=createEmptyData();specialData={resale:"",defect:""};setLocal();render();doSearch();
- try{await rootRef.set({cells:data,special:specialData,itemMeta:itemMeta,unaddressed:unaddressedItems});setSync("☁️ Синхронизировано","ok");}
+ try{await rootRef.update({cells:data,special:specialData,itemMeta:itemMeta,unaddressed:unaddressedItems});setSync("☁️ Синхронизировано","ok");}
  catch(e){setSync("⚠️ Ошибка синхронизации","err");console.error(e)}
 }
+const normalizedSearchCache=new Map();
 function normalizeSearchText(value){
-  return String(value||"")
+  const raw=String(value||"");
+  if(normalizedSearchCache.has(raw))return normalizedSearchCache.get(raw);
+  const normalized=raw
     .toLowerCase()
     .replace(/ё/g,"е")
     .replace(/й/g,"и")
     .replace(/[^a-zа-яіїєґ0-9]+/g," ")
     .trim();
+  if(normalizedSearchCache.size>=10000)normalizedSearchCache.clear();
+  normalizedSearchCache.set(raw,normalized);
+  return normalized;
 }
 
 function translitToLatin(value){
@@ -1956,8 +2079,10 @@ const bilingualTokenPairs={
   "підкрилок":"подкрылок", "облицювання":"облицовка", "передній":"передний", "задній":"задний"
 };
 
+const expandedSearchTokenCache=new Map();
 function expandSearchToken(token){
   const base=normalizeSearchText(token);
+  if(expandedSearchTokenCache.has(base))return expandedSearchTokenCache.get(base);
   const result=new Set([
     base,
     translitToLatin(base),
@@ -1982,7 +2107,10 @@ function expandSearchToken(token){
     }
   }
 
-  return [...result].filter(Boolean);
+  const expanded=[...result].filter(Boolean);
+  if(expandedSearchTokenCache.size>=512)expandedSearchTokenCache.clear();
+  expandedSearchTokenCache.set(base,expanded);
+  return expanded;
 }
 
 const brandCodeAliases={
@@ -2133,23 +2261,32 @@ function queryTokenMatchesText(token,text){
   return false;
 }
 
+const partTypeTokenCache=new Map(),brandTokenCache=new Map();
 function tokenIsPartType(token){
   const base=normalizeSearchText(token);
+  if(partTypeTokenCache.has(base))return partTypeTokenCache.get(base);
   for(const [name,aliases] of Object.entries(partTypeAliases)){
-    if([name,...aliases].some(x=>normalizeSearchText(x)===base))return name;
+    if([name,...aliases].some(x=>normalizeSearchText(x)===base)){if(partTypeTokenCache.size>=512)partTypeTokenCache.clear();partTypeTokenCache.set(base,name);return name;}
   }
+  if(partTypeTokenCache.size>=512)partTypeTokenCache.clear();
+  partTypeTokenCache.set(base,null);
   return null;
 }
 
 function tokenIsBrand(token){
   const base=normalizeSearchText(token);
+  if(brandTokenCache.has(base))return brandTokenCache.get(base);
 
   for(const [brand,aliases] of Object.entries(searchAliases)){
     if([brand,...aliases].some(x=>normalizeSearchText(x)===base)){
+      if(brandTokenCache.size>=512)brandTokenCache.clear();
+      brandTokenCache.set(base,brand);
       return brand;
     }
   }
 
+  if(brandTokenCache.size>=512)brandTokenCache.clear();
+  brandTokenCache.set(base,null);
   return null;
 }
 
@@ -2477,9 +2614,10 @@ function excelEsc(v){return String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<
 function showExcelMessage(cfg){return new Promise(resolve=>showExcelModal({...cfg,onClose:()=>resolve(),actions:[{label:"Понятно",className:"excel-primary",onClick:()=>{hideExcelModal();excelModalCloseHandler=null;resolve()}}]}))}
 function askExcelImport(o){return new Promise(resolve=>{
  const ph=o.preview.slice(0,5).map(x=>`<div class="excel-preview-row"><strong>${excelEsc(x.address)}</strong>${excelEsc(x.value)}</div>`).join("");
+ const headerInfo=o.headerRow?`<div class="excel-warn" style="margin-top:10px">Заголовки колонок найдены в строке Excel ${o.headerRow}. Предыдущие ${Math.max(0,o.headerRow-1)} строк отчёта не импортируются.${o.serviceRowsSkipped?` После заголовка пропущено служебных строк: ${o.serviceRowsSkipped}.`:""}</div>`:"";
  const ua=o.unaddressedCount?`<div class="excel-section"><div class="excel-section-title">📦 Без адреса</div><div class="excel-warn">${o.unaddressedCount} строк без адреса попадут в отдельный список. Повторы будут объединены.<br>${o.unaddressedPreview.map(x=>`${excelEsc(x.article)}${x.description?` — ${excelEsc(x.description)}`:""}`).join("<br>")}${o.unaddressedCount>o.unaddressedPreview.length?"<br>…": ""}</div></div>`:"";
  const sh=o.skipped.length?`<div class="excel-section"><div class="excel-section-title">⚠️ Не удалось обработать</div><div class="excel-warn">${o.skipped.slice(0,5).map(x=>`Строка ${excelEsc(x.row)} — ${excelEsc(x.reason)}`).join("<br>")}${o.skipped.length>5?`<br>…и ещё ${o.skipped.length-5}.`:""}</div></div>`:`<div class="excel-section"><div class="excel-warn" style="background:#edf9f0;border-color:#b8dfc0;color:#2e6b3b">✓ Все строки с данными будут обработаны.</div></div>`;
- showExcelModal({title:"Проверка импорта",fileName:`📄 ${o.fileName}`,onClose:()=>resolve(false),body:`<div class="excel-stats"><div class="excel-stat"><b>${o.rowCount}</b><span>строк с данными</span></div><div class="excel-stat"><b>${o.addressCount}</b><span>ячеек</span></div><div class="excel-stat"><b>${o.locationCount}</b><span>записей в ячейки</span></div></div><div class="excel-section"><div class="excel-section-title">Предпросмотр ячеек</div><div class="excel-preview">${ph}${o.addressCount>5?`<div style="padding:7px 4px;color:#66717d">…и ещё ${o.addressCount-5} ячеек</div>`:""}</div></div>${ua}${sh}<div style="margin-top:14px;font-size:13px;color:#52606d">Загрузить эти данные на карту и в список «Без адреса»?</div>`,actions:[{label:"Отмена",onClick:()=>{hideExcelModal();excelModalCloseHandler=null;resolve(false)}},{label:"Загрузить",className:"excel-primary",onClick:()=>{hideExcelModal();excelModalCloseHandler=null;resolve(true)}}]});
+ showExcelModal({title:"Проверка импорта",fileName:`📄 ${o.fileName}`,onClose:()=>resolve(false),body:`<div class="excel-stats"><div class="excel-stat"><b>${o.rowCount}</b><span>строк с данными</span></div><div class="excel-stat"><b>${o.addressCount}</b><span>ячеек</span></div><div class="excel-stat"><b>${o.locationCount}</b><span>записей в ячейки</span></div></div>${headerInfo}<div class="excel-section"><div class="excel-section-title">Предпросмотр ячеек</div><div class="excel-preview">${ph}${o.addressCount>5?`<div style="padding:7px 4px;color:#66717d">…и ещё ${o.addressCount-5} ячеек</div>`:""}</div></div>${ua}${sh}<div style="margin-top:14px;font-size:13px;color:#52606d">Загрузить эти данные на карту и в список «Без адреса»?</div>`,actions:[{label:"Отмена",onClick:()=>{hideExcelModal();excelModalCloseHandler=null;resolve(false)}},{label:"Загрузить",className:"excel-primary",onClick:()=>{hideExcelModal();excelModalCloseHandler=null;resolve(true)}}]});
 })}
 
 function splitExportLine(line){
@@ -2658,6 +2796,7 @@ async function importExcelFile(file){
     const unaddressedImported=[];
     let rowCount=0;
     let locationCount=0;
+    let serviceRowsSkipped=0;
 
     // Не привязываемся к первой строке: она может быть пустой или
     // содержать заголовок. findExcelColumns() пропустит пустые строки.
@@ -2666,7 +2805,11 @@ async function importExcelFile(file){
       const {description,article,location}=findExcelColumns(row,columnMap);
 
       if(!description && !article && !location)continue;
-      if(isExcelServiceRow(description,article,location))continue;
+      if(isExcelServiceRow(description,article,location)){
+        serviceRowsSkipped++;
+        skipped.push({row:i+1,reason:"служебная строка отчёта"});
+        continue;
+      }
       rowCount++;
 
       if(!article){
@@ -2711,9 +2854,28 @@ async function importExcelFile(file){
     }
 
     const preview=addresses.slice(0,10).map(addr=>({address:addr,value:imported[addr].join(" · ")}));
-
-    const ok=await askExcelImport({fileName:file.name,rowCount,addressCount:addresses.length,locationCount,preview,skipped,unaddressedCount:unaddressedImported.length,unaddressedPreview:unaddressedImported.slice(0,5)});
+    const ok=await askExcelImport({fileName:file.name,rowCount,addressCount:addresses.length,locationCount,preview,skipped,headerRow:columnMap.headerRow>=0?columnMap.headerRow+1:null,serviceRowsSkipped,unaddressedCount:unaddressedImported.length,unaddressedPreview:unaddressedImported.slice(0,5)});
     if(!ok)return;
+
+    // Capture the actual server state after confirmation, so the undo point
+    // preserves edits made while the import preview was open.
+    const [cellsBeforeSnap,metaBeforeSnap]=await Promise.all([
+      rootRef.child("cells").once("value"),
+      rootRef.child("itemMeta").once("value")
+    ]);
+    const cellsBeforeImport=normalizeData(cellsBeforeSnap.val());
+    const cellValuesBeforeImport={};
+    for(const addr of addresses){
+      const match=addr.match(/^S([1-5])-([A-K])-(\d+)$/);
+      if(!match)continue;
+      const [,s,l,n]=match;
+      cellValuesBeforeImport[addr]=String(cellsBeforeImport[`S${s}`]?.[l]?.[n]||"");
+    }
+    const metaBeforeImport=normalizeMeta(metaBeforeSnap.val());
+    data=cellsBeforeImport;itemMeta=metaBeforeImport;
+    // The previous rollback point is no longer safe once a new import starts.
+    await rootRef.child("undo/lastImport").remove();
+    lastImportUndo=null;setLocal();updateUndoLastImportButton();
 
     // Формируем только те ячейки, которые пришли из Excel.
     // Используем частичное обновление Firebase, чтобы импорт:
@@ -2800,7 +2962,10 @@ async function importExcelFile(file){
 
       let unaddressedSaved=true,unaddressedError="";
       const unaddressedAdds={};
-      const seenUnaddressed=new Set(Object.values(unaddressedItems||{}).map(unaddressedIdentity));
+      const seenUnaddressed=new Set([
+        ...Object.values(unaddressedItems||{}).map(unaddressedIdentity),
+        ...Object.values(deletedUnaddressedItems||{}).map(unaddressedIdentity)
+      ]);
       for(const item of unaddressedImported){
         const identity=unaddressedIdentity(item);
         if(!identity||seenUnaddressed.has(identity))continue;
@@ -2819,6 +2984,38 @@ async function importExcelFile(file){
         console.warn("Не удалось сохранить список деталей без адреса:",unaddressedErr);
       }
 
+      let undoSaved=false,undoError="";
+      const undoCellsBefore={},undoCellsAfter={},undoMetaBefore={};
+      for(const addr of savedAddresses){
+        const match=addr.match(/^S([1-5])-([A-K])-(\d+)$/);
+        if(!match)continue;
+        const [,s,l,n]=match,path=`S${s}/${l}/${n}`;
+        undoCellsBefore[addr]=String(cellValuesBeforeImport[addr]||"");
+        undoCellsAfter[addr]=imported[addr].join("\n");
+        for(const detail of linesOf(imported[addr].join("\n"))){
+          const key=itemKey(addr,detail);
+          undoMetaBefore[key]=metaBeforeImport[key]||null;
+        }
+      }
+      const importUndo={
+        fileName:file.name,
+        createdAt:nowTs(),
+        cellsBefore:undoCellsBefore,
+        cellsAfter:undoCellsAfter,
+        metadataBefore:undoMetaBefore,
+        unaddressedKeys:unaddressedSaved?Object.keys(unaddressedAdds):[]
+      };
+      if(Object.keys(undoCellsAfter).length||importUndo.unaddressedKeys.length){
+        try{
+          await rootRef.child("undo/lastImport").set(importUndo);
+          lastImportUndo=importUndo;
+          undoSaved=true;
+        }catch(undoErr){
+          undoError=String(undoErr?.message||undoErr||"ошибка создания точки отмены");
+          console.warn("Не удалось сохранить отмену последнего импорта:",undoErr);
+        }
+      }
+
       // Journal: successful cells, skipped Excel rows, and actual failed records.
       const historyKey=rootRef.child("history").push().key;
       if(historyKey){
@@ -2835,6 +3032,8 @@ async function importExcelFile(file){
           failedItems:failedItems.slice(0,200),
           metadataSaved:metaSaved,
           metadataError:metaSaved?null:metaError,
+          undoAvailable:undoSaved,
+          undoError:undoSaved?null:undoError,
           email:currentUserEmail(),
           timestamp:firebase.database.ServerValue.TIMESTAMP
         });
@@ -2846,6 +3045,7 @@ async function importExcelFile(file){
         data[`S${s}`][l][n]=imported[addr].join("\n");
       }
       setLocal();
+      updateUndoLastImportButton();
       render();
       doSearch();
       updateUnaddressedButton();
@@ -2861,6 +3061,9 @@ async function importExcelFile(file){
         ? `<div class="excel-section"><div class="excel-section-title">⚠️ Пропущено при чтении Excel</div><div class="excel-warn">${skipped.slice(0,20).map(x=>`Строка ${excelEsc(x.row)} — ${excelEsc(x.reason)}`).join("<br>")}${skipped.length>20?`<br>…и ещё ${skipped.length-20}.`:""}</div></div>` : "";
       const metaHtml=!metaSaved
         ? `<div class="excel-error" style="margin-top:10px">⚠️ Ячейки сохранены, но служебные метаданные не записались. Ошибка: ${excelEsc(metaError)}</div>` : "";
+      const undoHtml=!undoSaved
+        ? `<div class="excel-warn" style="margin-top:10px">⚠️ Не удалось сохранить отмену этого импорта${undoError?`: ${excelEsc(undoError)}`:""}.</div>`
+        : `<div class="excel-warn" style="margin-top:10px;background:#edf9f0;border-color:#b8dfc0;color:#2e6b3b">↩ Импорт можно отменить в разделе «История».</div>`;
       const unaddressedHtml=unaddressedSaved
         ? (Object.keys(unaddressedAdds).length?`<div class="excel-warn" style="margin-top:10px;background:#edf9f0;border-color:#b8dfc0;color:#2e6b3b">📦 В список «Без адреса» добавлено ${Object.keys(unaddressedAdds).length} деталей.</div>`:"")
         : `<div class="excel-error" style="margin-top:10px">⚠️ Список «Без адреса» не удалось сохранить: ${excelEsc(unaddressedError)}</div>`;
@@ -2870,7 +3073,7 @@ async function importExcelFile(file){
         icon:problemCount?"⚠️":"✓",
         iconClass:problemCount?"excel-error-icon":"excel-success-icon",
         fileName:`📄 ${file.name}`,
-        body:`<div class="excel-stats"><div class="excel-stat"><b>${savedAddresses.length}</b><span>загружено ячеек</span></div><div class="excel-stat"><b>${locationCount}</b><span>записей в ячейки</span></div><div class="excel-stat"><b>${Object.keys(unaddressedAdds).length}</b><span>добавлено без адреса</span></div><div class="excel-stat"><b>${failedItems.length}</b><span>ошибок записи</span></div><div class="excel-stat"><b>${skipped.length}</b><span>не обработано строк</span></div></div>${failedHtml}${skippedHtml}${metaHtml}${unaddressedHtml}`
+         body:`<div class="excel-stats"><div class="excel-stat"><b>${savedAddresses.length}</b><span>загружено ячеек</span></div><div class="excel-stat"><b>${locationCount}</b><span>записей в ячейки</span></div><div class="excel-stat"><b>${Object.keys(unaddressedAdds).length}</b><span>добавлено без адреса</span></div><div class="excel-stat"><b>${failedItems.length}</b><span>ошибок записи</span></div><div class="excel-stat"><b>${skipped.length}</b><span>не обработано строк</span></div></div>${failedHtml}${skippedHtml}${metaHtml}${unaddressedHtml}${undoHtml}`
       });
       return;
 
@@ -3342,31 +3545,78 @@ searchInput.addEventListener("input",()=>{
   searchRenderTimer=setTimeout(doSearch,180);
 });
 
-rootRef.on("value",async snap=>{
- const remote=snap.val();
- if(!remote){
-  if(hasLocalData()&&!remoteLoaded){
-   const localD=JSON.parse(localStorage.getItem("warehouseMapData")||"null");
-   const localS=JSON.parse(localStorage.getItem("warehouseSpecialData")||"null");
-   const localM=JSON.parse(localStorage.getItem("warehouseItemMeta")||"null");
-   const localUnaddressed=JSON.parse(localStorage.getItem("warehouseUnaddressed")||"null");
-   data=normalizeData(localD);specialData=localS||{resale:"",defect:""};itemMeta=normalizeMeta(localM);unaddressedItems=normalizeUnaddressed(localUnaddressed);
-   setLocal();updateUnaddressedButton();render();doSearch();
+async function startWarehouseSync(){
+ if(!auth?.currentUser||warehouseSyncStarted||warehouseSyncStarting)return;
+ warehouseSyncStarting=true;
+ try{
+  // Read the root once for empty-database migration, then listen only to data
+  // branches used by the UI. History/undo writes no longer redraw the map.
+  const initialSnap=await rootRef.once("value");
+  const remote=initialSnap.val();
+  if(remote){
+   data=normalizeData(remote.cells);
+   specialData=remote.special||{resale:"",defect:""};
+   itemMeta=normalizeMeta(remote.itemMeta);
+   unaddressedItems=normalizeUnaddressed(remote.unaddressed);
+   deletedUnaddressedItems=normalizeUnaddressedTrash(remote.unaddressedTrash);
+   lastImportUndo=remote.undo?.lastImport||null;
+  }else if(hasLocalData()){
+   data=normalizeData(JSON.parse(localStorage.getItem("warehouseMapData")||"null"));
+   specialData=JSON.parse(localStorage.getItem("warehouseSpecialData")||"null")||{resale:"",defect:""};
+   itemMeta=normalizeMeta(JSON.parse(localStorage.getItem("warehouseItemMeta")||"null"));
+   unaddressedItems=normalizeUnaddressed(JSON.parse(localStorage.getItem("warehouseUnaddressed")||"null"));
+   deletedUnaddressedItems=normalizeUnaddressedTrash(JSON.parse(localStorage.getItem("warehouseUnaddressedTrash")||"null"));
+   lastImportUndo=JSON.parse(localStorage.getItem("warehouseLastImportUndo")||"null");
    if(canEdit()){
-    try{
-      await rootRef.set({cells:data,special:specialData,itemMeta:itemMeta,unaddressed:unaddressedItems});
-      setSync("☁️ Данные ПК перенесены в Firebase","ok");
-    }catch(e){
-      setSync("⚠️ Нет записи в Firebase","err");
-    }
+    await rootRef.update({cells:data,special:specialData,itemMeta:itemMeta,unaddressed:unaddressedItems,unaddressedTrash:deletedUnaddressedItems,"undo/lastImport":lastImportUndo});
+    setSync("☁️ Данные этого устройства перенесены в Firebase","ok");
+   }else setSync("👁️ Локальные данные · режим просмотра","ok");
   }else{
-    setSync("👁️ Режим просмотра","ok");
+   data=createEmptyData();specialData={resale:"",defect:""};itemMeta={};unaddressedItems={};deletedUnaddressedItems={};lastImportUndo=null;
+   setSync("☁️ Firebase подключён","ok");
   }
-  }else{data=createEmptyData();specialData={resale:"",defect:""};itemMeta={};unaddressedItems={};setLocal();render();doSearch();setSync("☁️ Firebase подключён","ok")}
-  remoteLoaded=true;return;
- }
- data=normalizeData(remote.cells);specialData=remote.special||{resale:"",defect:""};itemMeta=normalizeMeta(remote.itemMeta);unaddressedItems=normalizeUnaddressed(remote.unaddressed);setLocal();updateUnaddressedButton();if(document.getElementById("unaddressedModal")?.style.display==="flex")renderUnaddressedList();remoteLoaded=true;render();doSearch();setSync("☁️ Синхронизировано","ok");
-},err=>{setSync("⚠️ Ошибка Firebase","err");console.error(err)});
+  remoteLoaded=true;setLocal();render();doSearch();renderSpecial();
+  updateUnaddressedButton();updateUnaddressedTrashCount();updateUndoLastImportButton();
+
+  rootRef.child("cells").on("value",snap=>{
+   const next=normalizeData(snap.val());
+   if(JSON.stringify(next)===JSON.stringify(data))return;
+   data=next;setLocal();render();doSearch();
+  },syncError);
+  rootRef.child("special").on("value",snap=>{
+   const next=snap.val()||{resale:"",defect:""};
+   if(JSON.stringify(next)===JSON.stringify(specialData))return;
+   specialData=next;setLocal();renderSpecial();doSearch();
+  },syncError);
+  rootRef.child("itemMeta").on("value",snap=>{
+   const next=normalizeMeta(snap.val());
+   if(JSON.stringify(next)===JSON.stringify(itemMeta))return;
+   itemMeta=next;setLocal();
+   if(current)renderItemMeta(address(current.s,current.l,current.n),data[current.s]?.[current.l]?.[String(current.n)]||"");
+  },syncError);
+  rootRef.child("unaddressed").on("value",snap=>{
+   const next=normalizeUnaddressed(snap.val());
+   if(JSON.stringify(next)===JSON.stringify(unaddressedItems))return;
+   unaddressedItems=next;setLocal();updateUnaddressedButton();
+   if(document.getElementById("unaddressedModal")?.style.display==="flex")renderUnaddressedList();
+   doSearch();
+  },syncError);
+  rootRef.child("unaddressedTrash").on("value",snap=>{
+   const next=normalizeUnaddressedTrash(snap.val());
+   if(JSON.stringify(next)===JSON.stringify(deletedUnaddressedItems))return;
+   deletedUnaddressedItems=next;setLocal();updateUnaddressedTrashCount();renderUnaddressedTrash();
+  },syncError);
+  rootRef.child("undo/lastImport").on("value",snap=>{
+   lastImportUndo=snap.val()||null;setLocal();updateUndoLastImportButton();
+  },syncError);
+  warehouseSyncStarted=true;
+  warehouseSyncStarting=false;
+  setSync("☁️ Синхронизировано","ok");
+ }catch(error){warehouseSyncStarting=false;syncError(error);}
+}
+function syncError(error){setSync("⚠️ Ошибка Firebase","err");console.error("Ошибка синхронизации Firebase:",error);}
+startWarehouseSync();
+window.addEventListener("online",()=>{if(!warehouseSyncStarted)startWarehouseSync();});
 
 render();renderSpecial();renderMiniMap([]);initHistoryUi();initUnaddressedUi();setAccessUi();
 
