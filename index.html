@@ -1053,7 +1053,10 @@ async function writeHistory(event){
 
 function updateUndoLastImportButton(){
  const button=document.getElementById("undoLastImportBtn");
- if(button)button.disabled=!canEdit()||!lastImportUndo;
+ if(button){
+  button.disabled=!canEdit()||!lastImportUndo;
+  button.textContent=lastImportUndo?.kind==="clear"?"↩ Отменить очистку склада":lastImportUndo?"↩ Отменить последний импорт":"↩ Нет действия для отмены";
+ }
 }
 
 async function undoLastImport(){
@@ -1062,43 +1065,57 @@ async function undoLastImport(){
   const snap=await rootRef.child("undo/lastImport").once("value");
   const backup=snap.val();
   if(!backup){lastImportUndo=null;updateUndoLastImportButton();alert("Нет сохранённого импорта, который можно отменить.");return;}
-  const label=backup.fileName||"последний Excel";
-  if(!confirm(`Отменить импорт «${label}» и вернуть прежнее содержимое ячеек?`))return;
-  const cellsSnap=await rootRef.child("cells").once("value"),remoteCells=cellsSnap.val()||{};
-  const updates={};
-  for(const [addr,expected] of Object.entries(backup.cellsAfter||{})){
-   const match=addr.match(/^S([1-5])-([A-K])-(\d+)$/);
-   if(!match)continue;
-   const [,street,shelf,number]=match;
-   const currentValue=String(remoteCells?.[`S${street}`]?.[shelf]?.[number]||"");
-   if(currentValue!==String(expected||"")){
-    alert(`Отмена остановлена: ячейка ${addr} была изменена после импорта. Сначала проверьте её содержимое.`);
-    return;
+   const isClear=backup.kind==="clear";
+   const label=isClear?"очистку склада":`импорт «${backup.fileName||"Excel"}»`;
+   if(!confirm(`Отменить ${label} и восстановить прежние данные?`))return;
+   const [cellsSnap,metaSnap]=await Promise.all([
+    rootRef.child("cells").once("value"),rootRef.child("itemMeta").once("value")
+   ]);
+   const remoteCells=normalizeData(cellsSnap.val()),remoteMeta=normalizeMeta(metaSnap.val());
+   const updates={};
+   if(isClear){
+    if(JSON.stringify(remoteCells)!==JSON.stringify(normalizeData(backup.cellsAfter))||JSON.stringify(remoteMeta)!==JSON.stringify(normalizeMeta(backup.metadataAfter))){
+     alert("Отмена остановлена: после очистки склад уже изменился. Чтобы не затереть новые данные, очистка не отменена.");return;
+    }
+    updates.cells=normalizeData(backup.cellsBefore);
+    updates.itemMeta=normalizeMeta(backup.metadataBefore);
+   }else{
+    for(const [addr,expected] of Object.entries(backup.cellsAfter||{})){
+     const match=addr.match(/^S([1-5])-([A-K])-(\d+)$/);if(!match)continue;
+     const [,street,shelf,number]=match;
+     const currentValue=String(remoteCells?.[`S${street}`]?.[shelf]?.[number]||"");
+     if(currentValue!==String(expected||"")){
+      alert(`Отмена остановлена: ячейка ${addr} была изменена после импорта. Сначала проверьте её содержимое.`);return;
+     }
+     updates[`cells/S${street}/${shelf}/${number}`]=String(backup.cellsBefore?.[addr]||"");
+    }
+    for(const [key,value] of Object.entries(backup.metadataBefore||{}))updates[`itemMeta/${key}`]=value||null;
+    for(const key of Object.values(backup.unaddressedKeys||{}))updates[`unaddressed/${key}`]=null;
    }
-   updates[`cells/S${street}/${shelf}/${number}`]=String(backup.cellsBefore?.[addr]||"");
-  }
-  for(const [key,value] of Object.entries(backup.metadataBefore||{}))updates[`itemMeta/${key}`]=value||null;
-  for(const key of Object.values(backup.unaddressedKeys||{}))updates[`unaddressed/${key}`]=null;
-  if(!Object.keys(updates).length){alert("В точке отмены нет изменений.");return;}
-  updates["undo/lastImport"]=null;
-  await rootRef.update(updates);
-  for(const [addr,value] of Object.entries(backup.cellsBefore||{})){
-   const match=addr.match(/^S([1-5])-([A-K])-(\d+)$/);if(!match)continue;
-   const [,street,shelf,number]=match;data[`S${street}`][shelf][number]=String(value||"");
-  }
-  for(const [key,value] of Object.entries(backup.metadataBefore||{})){
-   if(value)itemMeta[key]=value;else delete itemMeta[key];
-  }
-  for(const key of Object.values(backup.unaddressedKeys||{}))delete unaddressedItems[key];
+   if(!Object.keys(updates).length){alert("В сохранённой точке отмены нет данных для восстановления.");return;}
+   updates["undo/lastImport"]=null;
+   await rootRef.update(updates);
+   if(isClear){
+    data=normalizeData(backup.cellsBefore);itemMeta=normalizeMeta(backup.metadataBefore);
+   }else{
+    for(const [addr,value] of Object.entries(backup.cellsBefore||{})){
+     const match=addr.match(/^S([1-5])-([A-K])-(\d+)$/);if(!match)continue;
+     const [,street,shelf,number]=match;data[`S${street}`][shelf][number]=String(value||"");
+    }
+    for(const [key,value] of Object.entries(backup.metadataBefore||{})){
+     if(value)itemMeta[key]=value;else delete itemMeta[key];
+    }
+    for(const key of Object.values(backup.unaddressedKeys||{}))delete unaddressedItems[key];
+   }
   lastImportUndo=null;setLocal();updateUndoLastImportButton();updateUnaddressedButton();
   render();doSearch();
   if(document.getElementById("unaddressedModal")?.style.display==="flex")renderUnaddressedList();
-  await writeHistory({type:"undoImport",detail:`Отменён импорт Excel: ${label}`,fileName:label});
+   await writeHistory({type:isClear?"undoClear":"undoImport",detail:isClear?"Отменена полная очистка склада":`Отменён импорт Excel: ${backup.fileName||""}`,fileName:backup.fileName||""});
   if(document.getElementById("historyModal")?.style.display==="flex")await openHistory();
-  showAppToast("Импорт отменён, прежние данные восстановлены");
- }catch(error){
-  console.error("Не удалось отменить импорт:",error);
-  alert("Не удалось отменить импорт. Проверьте подключение и попробуйте ещё раз.");
+   showAppToast(isClear?"Очистка отменена, склад восстановлен":"Импорт отменён, прежние данные восстановлены");
+  }catch(error){
+   console.error("Не удалось отменить импорт:",error);
+   alert(`Не удалось выполнить откат: ${error?.code||error?.message||"ошибка Firebase"}. Проверьте подключение и права записи.`);
  }
 }
 
@@ -1112,7 +1129,8 @@ function historyTypeLabel(type){
     importExcel:"📥 Импорт Excel",
     clear:"🗑️ Очистка склада",
     restore:"♻️ Восстановление",
-    undoImport:"↩ Отмена импорта"
+     undoImport:"↩ Отмена импорта",
+     undoClear:"↩ Отмена очистки"
   })[type]||"Событие";
 }
 
@@ -1818,14 +1836,31 @@ async function temporaryClearWarehouse(){
       .flatMap(sh=>Object.values(sh))
       .filter(v=>String(v||"").trim()).length;
 
-    itemMeta={};
-    await rootRef.update({
-      cells:emptyCells,
-      itemMeta:{}
-    });
+     const [cellsSnap,metaSnap]=await Promise.all([
+       rootRef.child("cells").once("value"),rootRef.child("itemMeta").once("value")
+     ]);
+     const cellsBefore=normalizeData(cellsSnap.val());
+     const metadataBefore=normalizeMeta(metaSnap.val());
+     const undoPoint={
+       kind:"clear",
+       createdAt:nowTs(),
+       cellsBefore,
+       cellsAfter:emptyCells,
+       metadataBefore,
+       metadataAfter:{}
+     };
 
-    data=emptyCells;
-    setLocal();
+     await rootRef.update({
+       cells:emptyCells,
+       itemMeta:{},
+       "undo/lastImport":undoPoint
+     });
+
+     data=emptyCells;
+     itemMeta={};
+     lastImportUndo=undoPoint;
+     setLocal();
+     updateUndoLastImportButton();
     await writeHistory({
       type:"clear",
       detail:"Полная очистка обычных ячеек склада",
@@ -1835,8 +1870,8 @@ async function temporaryClearWarehouse(){
 
     render();
     doSearch();
-    setSync("🗑️ Склад очищен · история сохранена","ok");
-    alert("Готово! Все 450 обычных ячеек очищены.\n\nИстория изменений сохранена.");
+     setSync("🗑️ Склад очищен · можно отменить через Историю","ok");
+     alert("Готово! Все 450 обычных ячеек очищены.\n\nОчистку можно отменить в разделе «История».");
   }catch(e){
     console.error("Ошибка очистки склада:",e);
     setSync("⚠️ Ошибка очистки","err");
@@ -1846,10 +1881,7 @@ async function temporaryClearWarehouse(){
 
 
 async function clearAll(){
- if(!confirm("Удалить содержимое всех видимых 450 ячеек?"))return;
- data=createEmptyData();specialData={resale:"",defect:""};setLocal();render();doSearch();
- try{await rootRef.update({cells:data,special:specialData,itemMeta:itemMeta,unaddressed:unaddressedItems});setSync("☁️ Синхронизировано","ok");}
- catch(e){setSync("⚠️ Ошибка синхронизации","err");console.error(e)}
+ return temporaryClearWarehouse();
 }
 const normalizedSearchCache=new Map();
 function normalizeSearchText(value){
