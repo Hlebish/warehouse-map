@@ -179,6 +179,8 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
 .unaddressed-row{border:1px solid #d7dee6;border-radius:9px;padding:10px;margin:7px 0;background:#fff;font-size:13px}
 .unaddressed-row-main{cursor:pointer}.unaddressed-row-main:hover{background:#f4f8ff}
 .unaddressed-assign{margin-top:8px;padding:7px 10px;font-size:12px}
+.unaddressed-delete{margin:8px 0 0 6px;padding:7px 10px;font-size:12px;border-color:#efb2b2;color:#a12626;background:#fff7f7}
+.unaddressed-delete:hover{background:#feecec}
 .unaddressed-row strong{color:#1264d8}.unaddressed-row small{display:block;color:var(--muted);margin-top:5px}
 body.dark .unaddressed-row{background:#171e25;color:var(--ink);border-color:#394754}
 .history-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}.history-head h2{margin:0}.history-close{flex:0 0 auto;width:40px;height:40px;padding:0;border:1px solid var(--border);border-radius:10px;background:var(--card);color:var(--ink);font-size:28px;line-height:1;display:flex;align-items:center;justify-content:center}.history-close:hover{background:#f1f3f5}
@@ -1185,7 +1187,27 @@ function renderUnaddressedList(){
  found.sort((a,b)=>String(a.article||a.description).localeCompare(String(b.article||b.description),"ru"));
  summary.textContent=query?`Найдено: ${found.length} из ${all.length}`:`Всего деталей без адреса: ${all.length}`;
  if(!found.length){list.innerHTML='<div class="result">По этому запросу ничего не найдено.</div>';return;}
- list.innerHTML=found.map(item=>`<div class="unaddressed-row"><div class="unaddressed-row-main" role="button" tabindex="0" onclick="assignUnaddressedItem('${esc(item.key)}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();assignUnaddressedItem('${esc(item.key)}')}"><strong>${esc(item.article||"Без артикула")}</strong>${item.description?`<div>${esc(item.description)}</div>`:""}<small>${esc(item.reason||"нет адреса хранения")}${item.fileName?` · ${esc(item.fileName)}`:""}${item.row?` · строка Excel ${item.row}`:""}</small><button class="unaddressed-assign" type="button" onclick="event.stopPropagation();assignUnaddressedItem('${esc(item.key)}')">📍 Указать адрес</button></div></div>`).join("");
+ list.innerHTML=found.map(item=>`<div class="unaddressed-row"><div class="unaddressed-row-main" role="button" tabindex="0" onclick="assignUnaddressedItem('${esc(item.key)}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();assignUnaddressedItem('${esc(item.key)}')}"><strong>${esc(item.article||"Без артикула")}</strong>${item.description?`<div>${esc(item.description)}</div>`:""}<small>${esc(item.reason||"нет адреса хранения")}${item.fileName?` · ${esc(item.fileName)}`:""}${item.row?` · строка Excel ${item.row}`:""}</small><button class="unaddressed-assign" type="button" onclick="event.stopPropagation();assignUnaddressedItem('${esc(item.key)}')">📍 Указать адрес</button><button class="unaddressed-delete" type="button" onclick="event.stopPropagation();deleteUnaddressedItem('${esc(item.key)}')">🗑 Удалить</button></div></div>`).join("");
+}
+async function deleteUnaddressedItem(key){
+ if(!canEdit()){alert("Удалять записи могут только пользователи с правом редактирования.");return;}
+ const item=unaddressedItems?.[key];
+ if(!item)return;
+ const label=[item.article,item.description].filter(Boolean).join(" — ")||"эту запись";
+ if(!confirm(`Удалить «${label}» из списка деталей без адреса?`))return;
+ try{
+  await rootRef.child("unaddressed").child(key).remove();
+  delete unaddressedItems[key];
+  setLocal();
+  updateUnaddressedButton();
+  renderUnaddressedList();
+  doSearch();
+  await writeHistory({type:"remove",detail:label,article:item.article||"",fileName:item.fileName||"",row:item.row||null});
+  showAppToast("Запись удалена из списка деталей без адреса");
+ }catch(error){
+  console.error("Не удалось удалить запись без адреса:",error);
+  alert("Не удалось удалить запись. Проверьте подключение и попробуйте ещё раз.");
+ }
 }
 async function assignUnaddressedItem(key){
  if(!canEdit()){alert("Назначать адрес могут только пользователи с правом редактирования.");return;}
