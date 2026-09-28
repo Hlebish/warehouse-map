@@ -2347,6 +2347,35 @@ function findExcelColumns(row,columnMap){
   };
 }
 
+function isExcelServiceRow(description,article,location){
+  const text=[description,article,location].filter(Boolean).join(" ")
+    .toLowerCase()
+    .replace(/ё/g,"е")
+    .replace(/[іїє]/g,ch=>({"і":"и","ї":"и","є":"е"}[ch]))
+    .replace(/\s+/g," ")
+    .trim();
+
+  // 1С adds report titles and period information above or between item rows.
+  // These are not products even when the fixed B/C/D columns make them look
+  // like a description/article/location record.
+  if(/ведомост|партиях?\s+товаров|партіях?\s+товарів|\bпер(?:и|і)од\b|\bза\s+пер(?:и|і)од\b/.test(text)){
+    return true;
+  }
+
+  // A date exported into the article column is report metadata, not an SKU.
+  const articleText=String(article||"").trim().toLowerCase().replace(/ё/g,"е");
+  if(/^\d{1,2}\s+(?:січня|лютого|березня|квітня|травня|червня|липня|серпня|вересня|жовтня|листопада|грудня|января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)\s+\d{4}$/i.test(articleText)){
+    return true;
+  }
+
+  // Header rows occasionally recur lower down in a report with merged cells.
+  if(/^(?:номенклатура|описание|наименование|название|артикул|код|место хранения|місце зберігання|количество|кількість)$/.test(text)){
+    return true;
+  }
+
+  return false;
+}
+
 function detectExcelColumns(rows){
   // В выгрузке 1С служебная информация занимает первые строки,
   // а настоящие заголовки находятся ниже. В текущем файле:
@@ -2617,6 +2646,7 @@ async function importExcelFile(file){
       const {description,article,location}=findExcelColumns(row,columnMap);
 
       if(!description && !article && !location)continue;
+      if(isExcelServiceRow(description,article,location))continue;
       rowCount++;
 
       if(!article){
