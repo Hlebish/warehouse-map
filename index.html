@@ -366,6 +366,12 @@ body.dark .unaddressed-row{background:#171e25;color:var(--ink);border-color:#394
 <style>/* Excel import UI */.excel-modal{position:fixed;inset:0;background:rgba(0,0,0,.58);display:none;align-items:center;justify-content:center;padding:16px;z-index:10050}.excel-dialog{background:#fff;border-radius:16px;width:min(620px,100%);max-height:88vh;overflow:auto;box-shadow:0 18px 60px #0007;padding:20px;color:var(--ink)}.excel-head{display:flex;align-items:flex-start;gap:12px;margin-bottom:16px}.excel-icon{width:42px;height:42px;flex:0 0 42px;border-radius:11px;background:#eaf2ff;color:#1f6feb;display:flex;align-items:center;justify-content:center;font-size:21px}.excel-head h2{margin:0 0 4px;font-size:20px}.excel-file{font-size:12px;color:var(--muted);overflow-wrap:anywhere}.excel-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0}.excel-stat{background:#f6f8fa;border:1px solid #e0e5ea;border-radius:10px;padding:11px}.excel-stat b{display:block;font-size:18px;margin-bottom:2px}.excel-stat span{font-size:11px;color:var(--muted)}.excel-section{margin-top:14px}.excel-section-title{font-size:13px;font-weight:700;margin-bottom:7px}.excel-preview{background:#f7f9fb;border:1px solid #dce3e9;border-radius:10px;padding:9px;max-height:150px;overflow:auto;font-size:12px}.excel-preview-row{padding:7px 4px;border-bottom:1px solid #e3e8ed}.excel-preview-row:last-child{border-bottom:0}.excel-preview-row strong{color:#1264d8;margin-right:7px}.excel-warn{background:#fff8e7;border:1px solid #f2d38a;color:#805b00;border-radius:10px;padding:10px;font-size:12px}.excel-error{background:#fff0f0;border:1px solid #f2b8b8;color:#9b1c1c;border-radius:10px;padding:11px;font-size:13px}.excel-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}.excel-actions button{min-width:105px}.excel-primary{background:var(--accent)!important;color:#fff!important;border-color:var(--accent)!important}.excel-success-icon{background:#eaf8ed;color:#2e7d46}.excel-error-icon{background:#fff0f0;color:#b42318}.excel-close{margin-left:auto;border:0;background:transparent;font-size:24px;line-height:1;color:#66717d;padding:0 4px}.excel-close:hover{background:#f1f3f5}@media(max-width:520px){.excel-dialog{padding:16px}.excel-stats{grid-template-columns:1fr 1fr}.excel-stat:last-child{grid-column:1/-1}.excel-actions{flex-direction:column-reverse}.excel-actions button{width:100%}}</style>
 
 <style id="app-upgrades">
+.keyboard-aware-overlay{z-index:115000!important;top:var(--app-viewport-top,0px)!important;height:var(--app-viewport-height,100dvh)!important;bottom:auto!important}
+@media(max-width:700px){
+  #modal.keyboard-aware-overlay,#specialModal.keyboard-aware-overlay,#moveModal.keyboard-aware-overlay,#historyModal.keyboard-aware-overlay,#unaddressedModal.keyboard-aware-overlay,.excel-modal.keyboard-aware-overlay{align-items:flex-start;justify-content:center;overflow-y:auto;overscroll-behavior:contain;padding:8px}
+  #modal.keyboard-aware-overlay .dialog,#specialModal.keyboard-aware-overlay .dialog,#moveModal.keyboard-aware-overlay .dialog,#historyModal.keyboard-aware-overlay .dialog,#unaddressedModal.keyboard-aware-overlay .dialog,.excel-modal.keyboard-aware-overlay .excel-dialog{max-height:calc(var(--app-viewport-height,100dvh) - 16px);overflow:auto;margin:0 auto}
+  #historyModal.keyboard-aware-overlay .dialog{width:100%;height:calc(var(--app-viewport-height,100dvh) - 16px);max-height:calc(var(--app-viewport-height,100dvh) - 16px);border-radius:12px}
+}
 .app-userbar{margin-top:8px}
 .role-badge{display:inline-flex;align-items:center;gap:5px;background:#ffffff18;border:1px solid #ffffff2e;border-radius:999px;padding:5px 9px;font-size:12px;color:#fff}
 .app-toast{position:fixed;left:50%;bottom:calc(76px + env(safe-area-inset-bottom));transform:translate(-50%,14px);opacity:0;pointer-events:none;z-index:120000;background:#17212b;color:#fff;border-radius:12px;padding:10px 14px;box-shadow:0 8px 28px #0005;font-size:13px;font-weight:700;transition:.18s ease;max-width:calc(100% - 28px);text-align:center}
@@ -3651,6 +3657,28 @@ startWarehouseSync();
 window.addEventListener("online",()=>{if(!warehouseSyncStarted)startWarehouseSync();});
 
 render();renderSpecial();renderMiniMap([]);initHistoryUi();initUnaddressedUi();setAccessUi();
+
+/* Keep dialogs inside Android's visible viewport when the soft keyboard opens. */
+(function setupKeyboardAwareDialogs(){
+  const overlays=[...document.querySelectorAll("#modal,#specialModal,#moveModal,#historyModal,#unaddressedModal,.excel-modal")];
+  overlays.forEach(el=>el.classList.add("keyboard-aware-overlay"));
+  const viewport=window.visualViewport;
+  const updateViewport=()=>{
+    const height=viewport?.height||window.innerHeight;
+    const top=viewport?.offsetTop||0;
+    document.documentElement.style.setProperty("--app-viewport-height",`${height}px`);
+    document.documentElement.style.setProperty("--app-viewport-top",`${top}px`);
+  };
+  updateViewport();
+  viewport?.addEventListener("resize",updateViewport);
+  viewport?.addEventListener("scroll",updateViewport);
+  window.addEventListener("resize",updateViewport);
+  document.addEventListener("focusin",event=>{
+    const field=event.target;
+    if(!field?.matches?.("textarea,input,select")||!field.closest?.(".keyboard-aware-overlay"))return;
+    setTimeout(()=>field.scrollIntoView({block:"center",behavior:"smooth"}),220);
+  });
+})();
 
 /* ===== Мобильное приближение плана склада ===== */
 (function setupWarehouseMapZoom(){
