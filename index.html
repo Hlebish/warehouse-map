@@ -1927,7 +1927,10 @@ function fixKeyboardLayout(value){
 function searchTokens(value){
   return normalizeSearchText(value)
     .split(/\s+/)
-    .filter(Boolean);
+    .filter(Boolean)
+    // AP — общий префикс тайваньских артикулов.
+    // Если он введён отдельно, он не должен участвовать в поиске.
+    .filter(token=>token!=="ap");
 }
 const searchAliases={
   "капот":["капот","hood","bonnet"],
