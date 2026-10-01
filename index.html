@@ -3597,6 +3597,15 @@ function doSearch(){
     return;
   }
 
+  // Если пользователь уже ввёл артикульный формат (есть цифры),
+  // НЕ переключаемся на общий нечёткий поиск. Иначе APMZ1402
+  // начинает находить сотни посторонних записей.
+  if(isFullArticleQuery(raw)){
+    out.innerHTML='<div class="result">Ничего не найдено.</div>';
+    renderMiniMap([]);
+    return;
+  }
+
   for(let s=1;s<=5;s++){
     const ls=s===1?leftLetters:letters;
 
