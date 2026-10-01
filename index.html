@@ -3499,15 +3499,32 @@ function findExactArticleResults(query){
             .split(/[^a-z0-9]+/)
             .filter(Boolean);
 
+          // Артикул в ячейке может быть записан как:
+          // APMZ1402C, AP MZ 1402C или AP MZ 1402 C.
+          // Поэтому проверяем не только отдельное слово, а
+          // последовательности из нескольких частей артикула.
           let match=words.includes(q);
 
           if(!match){
-            for(let i=0;i<words.length-1;i++){
-              if(words[i]+words[i+1]===q){
-                match=true;
-                break;
+            for(let start=0;start<words.length;start++){
+              let combined="";
+              for(let end=start;end<Math.min(words.length,start+5);end++){
+                combined+=words[end];
+                if(combined===q){
+                  match=true;
+                  break;
+                }
+                if(combined.length>q.length) break;
               }
+              if(match) break;
             }
+          }
+
+          // Дополнительная проверка для записи, где артикул идёт
+          // в начале строки вместе с описанием.
+          if(!match){
+            const compactLine=normalizeArticleQuery(line);
+            match=compactLine.startsWith(q+" ") || compactLine===q || compactLine.startsWith(q);
           }
 
           if(match){
