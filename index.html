@@ -3542,7 +3542,9 @@ if(exactArticleMatch){
         if(score>0){
           found.push({
             a,v,
-            matchedLines:matchedLines.map(x=>x.line),
+            matchedLines: exactArticleMatch
+  ? lines.filter(line => articleExactMatch(raw, line))
+  : matchedLines.map(x => x.line),
             s:"S"+s,l,n:String(n),score
           });
         }
@@ -3566,9 +3568,18 @@ if(exactArticleMatch){
     if(score>0)found.push({a:"Без адреса",v:text,unaddressed:true,score});
   }
 
-  found.sort((a,b)=>b.score-a.score);
+ // Если найден точный артикул — показываем только точные совпадения.
+// Остальной широкий поиск в этом случае не нужен.
+const exactResults = found.filter(x => x.score === 10000);
 
-  if(!found.length){
+if(exactResults.length){
+  found.length = 0;
+  found.push(...exactResults);
+}
+
+found.sort((a,b)=>b.score-a.score);
+
+if(!found.length){
     out.innerHTML='<div class="result">Ничего не найдено.</div>';
     renderMiniMap([]);
     return;
