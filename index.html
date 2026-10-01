@@ -3482,7 +3482,7 @@ function findExactArticleResults(query){
   const q=normalizeArticleQuery(query);
   if(!q || !isFullArticleQuery(query)) return [];
 
-  const exact=[];
+  const results=[];
 
   for(let s=1;s<=5;s++){
     const ls=s===1 ? leftLetters : letters;
@@ -3499,36 +3499,28 @@ function findExactArticleResults(query){
             .split(/[^a-z0-9]+/)
             .filter(Boolean);
 
-          // Артикул в ячейке может быть записан как:
-          // APMZ1402C, AP MZ 1402C или AP MZ 1402 C.
-          // Поэтому проверяем не только отдельное слово, а
-          // последовательности из нескольких частей артикула.
-          let match=words.includes(q);
+          let match=false;
 
-          if(!match){
-            for(let start=0;start<words.length;start++){
-              let combined="";
-              for(let end=start;end<Math.min(words.length,start+5);end++){
-                combined+=words[end];
-                if(combined===q){
-                  match=true;
-                  break;
-                }
-                if(combined.length>q.length) break;
+          // Ищем артикул как отдельное слово или как несколько
+          // разделённых пробелами частей: AP MZ 1402C -> APMZ1402C.
+          for(let start=0;start<words.length && !match;start++){
+            let combined="";
+            for(let end=start;end<Math.min(words.length,start+5);end++){
+              combined+=words[end];
+
+              // Важно: после появления цифр это уже артикульный поиск.
+              // Поэтому ищем по началу артикула, а не по словам описания.
+              if(combined===q || combined.startsWith(q)){
+                match=true;
+                break;
               }
-              if(match) break;
+
+              if(combined.length>=q.length) break;
             }
           }
 
-          // Дополнительная проверка для записи, где артикул идёт
-          // в начале строки вместе с описанием.
-          if(!match){
-            const compactLine=normalizeArticleQuery(line);
-            match=compactLine.startsWith(q+" ") || compactLine===q || compactLine.startsWith(q);
-          }
-
           if(match){
-            exact.push({
+            results.push({
               a:address("S"+s,l,n),
               v,
               matchedLines:[line],
@@ -3546,8 +3538,8 @@ function findExactArticleResults(query){
 
   for(const item of Object.values(unaddressedItems||{})){
     const article=normalizeArticleQuery(item?.article||"");
-    if(article===q){
-      exact.push({
+    if(article && article.startsWith(q)){
+      results.push({
         a:"Без адреса",
         v:[item.article,item.description].filter(Boolean).join(" — "),
         matchedLines:[item.article],
@@ -3557,7 +3549,7 @@ function findExactArticleResults(query){
     }
   }
 
-  return exact;
+  return results;
 }
 
 function doSearch(){
