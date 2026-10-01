@@ -2241,10 +2241,11 @@ const partCodeTypes={
 
 function isArticleLikeToken(token){
   const compact=normalizeSearchText(token).replace(/[^a-z0-9]/g,"");
-  // Артикулы/коды вроде mz0903, apmz0903, 27c103, 81b103-j.
-  // Для них нельзя использовать агрессивный fuzzy-поиск:
-  // mz0903 не должен совпадать с mz0203c только из-за похожих цифр.
-  return /^(?=.*[a-z])(?=.*\\d)[a-z0-9]+$/.test(compact) && compact.length>=4;
+
+  // Артикул вида APMZ1402C, APMZ0903, MZ0903 и т.п.
+  // Если есть буквы + цифры, считаем это артикулом
+  // и не применяем широкий fuzzy-поиск.
+  return /^(?=.*[a-z])(?=.*\d)[a-z0-9]+$/.test(compact) && compact.length>=4;
 }
 
 function articleTokenMatchesText(token,text){
@@ -3470,29 +3471,22 @@ function normalizeArticleQuery(value){
   return normalizeSearchText(value).replace(/[^a-z0-9а-яіїєґ]/g, "");
 }
 
-function articleExactMatch(query, value){
-  const q = normalizeArticleQuery(query);
-  if(!q || !value) return false;
+function normalizeArticleQuery(value){
+  return normalizeSearchText(value).replace(/[^a-z0-9]/g,"");
+}
 
-  const lines = String(value)
-    .split(/\r?\n/)
-    .map(x => normalizeArticleQuery(x))
+function articleExactMatch(query,value){
+  const q=normalizeArticleQuery(query);
+
+  if(!q || !value)return false;
+
+  const words=normalizeSearchText(String(value))
+    .split(/[^a-z0-9]+/)
+    .map(x=>x.trim())
     .filter(Boolean);
 
-  return lines.some(line => {
-    // Полное совпадение артикула
-    if(line === q) return true;
-
-    // Если в ячейке есть дополнительный текст,
-    // проверяем отдельные "слитные" части.
-    const parts = String(value)
-      .split(/\r?\n/)
-      .flatMap(line => line.match(/[a-zа-яіїєґ0-9]+/gi) || [])
-      .map(x => normalizeArticleQuery(x))
-      .filter(Boolean);
-
-    return parts.includes(q);
-  });
+  // Ищем именно целый артикул среди записей ячейки.
+  return words.includes(q);
 }
  
  function doSearch(){
