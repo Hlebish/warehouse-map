@@ -3466,7 +3466,36 @@ function showResultOnMap(s,l,n){
   },750);
 }
 
-function doSearch(){
+function normalizeArticleQuery(value){
+  return normalizeSearchText(value).replace(/[^a-z0-9а-яіїєґ]/g, "");
+}
+
+function articleExactMatch(query, value){
+  const q = normalizeArticleQuery(query);
+  if(!q || !value) return false;
+
+  const lines = String(value)
+    .split(/\r?\n/)
+    .map(x => normalizeArticleQuery(x))
+    .filter(Boolean);
+
+  return lines.some(line => {
+    // Полное совпадение артикула
+    if(line === q) return true;
+
+    // Если в ячейке есть дополнительный текст,
+    // проверяем отдельные "слитные" части.
+    const parts = String(value)
+      .split(/\r?\n/)
+      .flatMap(line => line.match(/[a-zа-яіїєґ0-9]+/gi) || [])
+      .map(x => normalizeArticleQuery(x))
+      .filter(Boolean);
+
+    return parts.includes(q);
+  });
+}
+ 
+ function doSearch(){
   const raw=document.getElementById("search").value.trim();
   const out=document.getElementById("results");
 
@@ -3491,15 +3520,24 @@ function doSearch(){
         // Например, запрос mz0903 должен показать только APMZ0903,
         // а не соседний APMZ0203C из той же ячейки.
         const lines=String(v).split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
-        const matchedLines=lines
-          .map(line=>({line,score:searchScore(queryTokens,line)}))
-          .filter(x=>x.score>0);
+       const exactArticleMatch = articleExactMatch(raw, v);
 
-        // Если ищем именно адрес, показываем всю ячейку.
-        const addressMatch=queryTokenMatchesText(raw,a);
-        const score=matchedLines.length
-          ? Math.max(...matchedLines.map(x=>x.score))
-          : (addressMatch ? 200 : 0);
+const matchedLines=lines
+  .map(line=>({line,score:searchScore(queryTokens,line)}))
+  .filter(x=>x.score>0);
+
+const addressMatch=queryTokenMatchesText(raw,a);
+
+let score;
+
+if(exactArticleMatch){
+  // Полный артикул всегда выше обычных совпадений.
+  score = 10000;
+}else if(matchedLines.length){
+  score = Math.max(...matchedLines.map(x=>x.score));
+}else{
+  score = addressMatch ? 200 : 0;
+}
 
         if(score>0){
           found.push({
