@@ -3499,23 +3499,25 @@ function findExactArticleResults(query){
             .split(/[^a-z0-9]+/)
             .filter(Boolean);
 
-          let match=false;
+          // Основная проверка тем же механизмом, которым старый поиск
+          // уже умеет находить артикулы внутри ячейки.
+          // Для полного запроса это строгое сравнение кода, без поиска
+          // по описанию и без fuzzy-поиска.
+          let match=articleTokenMatchesText(q,line);
 
-          // Ищем артикул как отдельное слово или как несколько
-          // разделённых пробелами частей: AP MZ 1402C -> APMZ1402C.
-          for(let start=0;start<words.length && !match;start++){
-            let combined="";
-            for(let end=start;end<Math.min(words.length,start+5);end++){
-              combined+=words[end];
-
-              // Важно: после появления цифр это уже артикульный поиск.
-              // Поэтому ищем по началу артикула, а не по словам описания.
-              if(combined===q || combined.startsWith(q)){
-                match=true;
-                break;
+          // Если артикул в ячейке разбит пробелами:
+          // AP MZ 1402 C -> APMZ1402C.
+          if(!match){
+            for(let start=0;start<words.length && !match;start++){
+              let combined="";
+              for(let end=start;end<Math.min(words.length,start+5);end++){
+                combined+=words[end];
+                if(combined===q || combined.startsWith(q)){
+                  match=true;
+                  break;
+                }
+                if(combined.length>=q.length) break;
               }
-
-              if(combined.length>=q.length) break;
             }
           }
 
