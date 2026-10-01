@@ -3499,13 +3499,13 @@ function findExactArticleResults(query){
             .split(/[^a-z0-9]+/)
             .filter(Boolean);
 
-          // Основная проверка тем же механизмом, которым старый поиск
-          // уже умеет находить артикулы внутри ячейки.
-          // Для полного запроса это строгое сравнение кода, без поиска
-          // по описанию и без fuzzy-поиска.
-          let match=articleTokenMatchesText(q,line);
+          // Для полного артикула сравниваем компактную строку всей записи.
+          // Это важно, потому что в ячейке артикул может стоять не первым,
+          // а рядом с другими артикулами/описаниями.
+          const compactLine=normalizeArticleQuery(line);
+          let match=compactLine.includes(q);
 
-          // Если артикул в ячейке разбит пробелами:
+          // Если артикул разбит пробелами:
           // AP MZ 1402 C -> APMZ1402C.
           if(!match){
             for(let start=0;start<words.length && !match;start++){
