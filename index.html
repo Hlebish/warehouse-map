@@ -3699,6 +3699,16 @@ if(!found.length){
 }
 
 const searchInput = document.getElementById("search");
+const articleFromUrl=new URLSearchParams(location.search).get("article");
+if(articleFromUrl){
+  searchInput.value=articleFromUrl;
+  setTimeout(()=>{
+    doSearch();
+    searchInput.focus();
+  },0);
+}
+
+
 
 // При появлении/изменении результатов не даём браузеру автоматически
 // прыгать по странице: строка поиска остаётся на том же месте экрана.
