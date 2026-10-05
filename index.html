@@ -3701,9 +3701,13 @@ if(!found.length){
 const searchInput = document.getElementById("search");
 const articleFromUrl=new URLSearchParams(location.search).get("article");
 if(articleFromUrl){
-  searchInput.value=articleFromUrl;
+  // Сохраняем запрос до полной загрузки Firebase/карты.
+  // Иначе на мобильном быстрый переход из заказа мог запускать поиск
+  // раньше, чем данные склада успевали прийти.
+  searchInput.value=articleFromUrl.trim();
+  window.pendingArticleSearch=searchInput.value;
   setTimeout(()=>{
-    doSearch();
+    if(typeof doSearch==="function")doSearch();
     searchInput.focus();
   },0);
 }
@@ -3756,6 +3760,12 @@ async function startWarehouseSync(){
    setSync("☁️ Firebase подключён","ok");
   }
   remoteLoaded=true;setLocal();render();doSearch();renderSpecial();
+  // Повторяем поиск из заказа после загрузки данных склада.
+  if(window.pendingArticleSearch){
+    searchInput.value=window.pendingArticleSearch;
+    doSearch();
+    window.pendingArticleSearch='';
+  }
   updateUnaddressedButton();updateUnaddressedTrashCount();updateUndoLastImportButton();
 
   rootRef.child("cells").on("value",snap=>{
