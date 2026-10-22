@@ -1,29 +1,36 @@
 {
   "rules": {
     "warehouse": {
-      ".read": "auth != null",
+      ".read": "auth != null && auth.uid != 'warehouse-map-reader'",
       "cells": {
+        ".read": "auth != null",
         ".write": "auth != null && (auth.token.email == 'glebur172@gmail.com' || auth.token.email == 'mashakashner2002@gmail.com' || auth.token.email == 'motroyl@gmail.com' || auth.token.email == 'hlebish7@gmail.com')"
       },
       "special": {
+        ".read": "auth != null && auth.uid != 'warehouse-map-reader'",
         ".write": "auth != null && (auth.token.email == 'glebur172@gmail.com' || auth.token.email == 'mashakashner2002@gmail.com' || auth.token.email == 'motroyl@gmail.com' || auth.token.email == 'hlebish7@gmail.com')"
       },
       "itemMeta": {
+        ".read": "auth != null && auth.uid != 'warehouse-map-reader'",
         ".write": "auth != null && (auth.token.email == 'glebur172@gmail.com' || auth.token.email == 'mashakashner2002@gmail.com' || auth.token.email == 'motroyl@gmail.com' || auth.token.email == 'hlebish7@gmail.com')"
       },
       "unaddressed": {
+        ".read": "auth != null",
         ".write": "auth != null && (auth.token.email == 'glebur172@gmail.com' || auth.token.email == 'mashakashner2002@gmail.com' || auth.token.email == 'motroyl@gmail.com' || auth.token.email == 'hlebish7@gmail.com')"
       },
       "unaddressedTrash": {
+        ".read": "auth != null && auth.uid != 'warehouse-map-reader'",
         ".write": "auth != null && (auth.token.email == 'glebur172@gmail.com' || auth.token.email == 'mashakashner2002@gmail.com' || auth.token.email == 'motroyl@gmail.com' || auth.token.email == 'hlebish7@gmail.com')"
       },
       "undo": {
         "lastImport": {
+          ".read": "auth != null && auth.uid != 'warehouse-map-reader'",
           ".write": "auth != null && (auth.token.email == 'glebur172@gmail.com' || auth.token.email == 'mashakashner2002@gmail.com' || auth.token.email == 'motroyl@gmail.com' || auth.token.email == 'hlebish7@gmail.com')"
         }
       },
       "history": {
         "$event": {
+          ".read": "auth != null && auth.uid != 'warehouse-map-reader'",
           ".write": "auth != null && (auth.token.email == 'glebur172@gmail.com' || auth.token.email == 'mashakashner2002@gmail.com' || auth.token.email == 'motroyl@gmail.com' || auth.token.email == 'hlebish7@gmail.com')"
         }
       }
