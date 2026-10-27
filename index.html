@@ -734,8 +734,16 @@ async function loginWithGoogle(){
       const credential=window.firebase.auth.GoogleAuthProvider.credential(idToken);
       await auth.signInWithCredential(credential);
     }else{
-      // Браузер: оставляем рабочий web-вход через popup.
-      // Redirect здесь специально НЕ используется.
+      // Mobile browsers and installed PWAs can leave a blank WebView after
+      // popup OAuth. Use a full-page redirect on mobile and finish it through
+      // getRedirectResult() after Firebase returns to this page.
+      const isMobileBrowser=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent||'');
+      if(isMobileBrowser){
+        provider.setCustomParameters({prompt:'select_account'});
+        await auth.signInWithRedirect(provider);
+        return;
+      }
+      // Desktop browsers keep the popup flow.
       await auth.signInWithPopup(provider);
     }
   }catch(error){
