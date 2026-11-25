@@ -3489,6 +3489,14 @@ function isFullArticleQuery(value){
   return /^(?=.*[a-z])(?=.*\d)[a-z0-9]{4,}$/.test(q);
 }
 
+// При неполном артикуле (BM2802) вариант без суффикса идёт первым.
+function articleResultScore(article,q){
+  const normalized=normalizeArticleQuery(article);
+  if(normalized===q) return 10002;
+  if(normalized.endsWith(q)) return 10001;
+  return 10000;
+}
+
 function findExactArticleResults(query){
   const q=normalizeArticleQuery(query);
   if(!q || !isFullArticleQuery(query)) return [];
@@ -3540,9 +3548,8 @@ function findExactArticleResults(query){
               s:"S"+s,
               l,
               n:String(n),
-              score:10000
+              score:articleResultScore(splitExportLine(line).article,q)
             });
-            break;
           }
         }
       }
@@ -3551,18 +3558,18 @@ function findExactArticleResults(query){
 
   for(const item of Object.values(unaddressedItems||{})){
     const article=normalizeArticleQuery(item?.article||"");
-    if(article && article.startsWith(q)){
+    if(article && article.includes(q)){
       results.push({
         a:"Без адреса",
         v:[item.article,item.description].filter(Boolean).join(" — "),
         matchedLines:[item.article],
         unaddressed:true,
-        score:10000
+        score:articleResultScore(article,q)
       });
     }
   }
 
-  return results;
+  return results.sort((a,b)=>b.score-a.score);
 }
 
 function doSearch(){
