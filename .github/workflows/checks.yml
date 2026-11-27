@@ -1,0 +1,31 @@
+name: Warehouse map checks
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check inline application syntax
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs'), vm = require('node:vm');
+          const html = fs.readFileSync('index.html', 'utf8');
+          for (const match of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)) {
+            if (!/\bsrc\s*=/.test(match[1])) new vm.Script(match[2]);
+          }
+          NODE
+      - name: Run local regression tests
+        run: node --test tests/*.test.cjs
