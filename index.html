@@ -57,10 +57,16 @@ textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--bord
   margin:5px 0;
   cursor:pointer;
 }
-.search-result-info{
+.search-result-row .search-result-info{
   flex:1 1 auto;
   min-width:0;
   overflow:hidden;
+  background:transparent;
+  color:inherit;
+  border:0;
+  border-radius:0;
+  padding:0;
+  text-align:left;
 }
 .search-result-info strong{
   display:inline-block;
@@ -347,6 +353,16 @@ body.dark .unaddressed-row{background:#171e25;color:var(--ink);border-color:#394
 @media(max-width:520px){
  .mini-map{grid-template-columns:1fr}
 }
+
+.save-feedback{min-height:1.4em;font-size:14px;line-height:1.5;color:var(--muted)}
+.save-feedback[data-state="error"]{color:#b91c1c}
+.save-feedback[data-state="warning"]{color:#92400e}
+.edit-conflict{padding:14px;margin:12px 0;border:1px solid #e4b36b;border-radius:12px;background:#fff8ed}
+.edit-conflict[hidden]{display:none}
+.edit-conflict textarea{min-height:90px;margin:8px 0}
+body.dark .edit-conflict{background:#302719;border-color:#846032}
+body.dark .save-feedback[data-state="error"]{color:#fca5a5}
+body.dark .save-feedback[data-state="warning"]{color:#fcd58b}
 </style>
 <style>
 /* Активная ячейка после кнопки «На карте»: красная и мигает,
@@ -541,17 +557,21 @@ body.dark .search-result-info strong,body.dark .result strong{color:#58a6ff}
 <div id="specialModal"><div class="dialog">
 <h2 id="specialTitle"></h2><label>Что находится здесь</label>
 <textarea id="specialContent" placeholder="Например: APHD4307 — 1 шт.&#10;Можно указать несколько артикулов."></textarea>
-<div class="actions"><button onclick="closeSpecial()">Отмена</button><button data-edit-only class="primary" onclick="saveSpecial()">Сохранить</button></div>
+<p id="specialSaveStatus" class="save-feedback" role="status" aria-live="polite"></p>
+<div id="specialConflict" class="edit-conflict" hidden><label for="specialConflictValue">Актуальная версия на сервере</label><textarea id="specialConflictValue" readonly></textarea><button type="button" onclick="reloadSpecialEdit()">Загрузить актуальный текст</button></div>
+<div class="actions"><button onclick="closeSpecial()">Отмена</button><button id="saveSpecialButton" data-edit-only class="primary" onclick="saveSpecial()">Сохранить</button></div>
 </div></div>
 
 <div id="modal"><div class="dialog">
 <h2>Ячейка <span id="addr" class="addr"></span></h2><label>Что лежит в ячейке</label>
 <textarea id="content" placeholder="Например: APHD4307 — капот Honda, 2 шт.&#10;Можно указать несколько позиций."></textarea>
+<p id="cellSaveStatus" class="save-feedback" role="status" aria-live="polite"></p>
+<div id="cellConflict" class="edit-conflict" hidden><label for="cellConflictValue">Актуальная версия на сервере</label><textarea id="cellConflictValue" readonly></textarea><button type="button" onclick="reloadCellEdit()">Загрузить актуальный текст</button></div>
 <div id="itemMetaList" class="item-meta"></div>
 <div class="actions">
 <button onclick="closeModal()">Отмена</button>
 <button data-edit-only onclick="openMoveModal()">⚡ Быстрое перемещение</button>
-<button data-edit-only class="primary" onclick="saveCell()">Сохранить</button>
+<button id="saveCellButton" data-edit-only class="primary" onclick="saveCell()">Сохранить</button>
 </div>
 </div></div>
 
@@ -629,6 +649,7 @@ body.dark .search-result-info strong,body.dark .result strong{color:#58a6ff}
 <div class="actions"><button onclick="closeUnaddressedModal()">Закрыть</button></div>
 </div></div>
 
+<script src="warehouse-edits.js"></script>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
@@ -883,6 +904,8 @@ const letters=["A","B","C","D","E","F","G","H","J","K"];
 const leftLetters=["A","B","C","D","E"];
 const rightLetters=["F","G","H","J","K"];
 let data=createEmptyData(), specialData={resale:"",defect:""}, itemMeta={}, unaddressedItems={}, deletedUnaddressedItems={}, lastImportUndo=null, current=null, currentSpecial=null;
+let cellEditBaseline="",specialEditBaseline="",cellSavePending=false,specialSavePending=false;
+const cellPendingJournals=new Map(),specialPendingJournals=new Map();
 let remoteLoaded=false;
 let warehouseSyncStarted=false,warehouseSyncStarting=false;
 
@@ -1471,15 +1494,56 @@ function shelf(box,s,l,parent){
  }
  parent.appendChild(sh);return occupied;
 }
+function editFeedback(kind,message,state=""){
+ const node=document.getElementById(kind+"SaveStatus");
+ if(node){node.textContent=message;node.dataset.state=state;}
+}
+function setEditBusy(kind,busy){
+ const button=document.getElementById(kind==="cell"?"saveCellButton":"saveSpecialButton");
+ const input=document.getElementById(kind==="cell"?"content":"specialContent");
+  const journal=kind==="cell"?(current&&cellPendingJournals.get(address(current.s,current.l,current.n))):specialPendingJournals.get(currentSpecial);
+  if(button){button.disabled=busy;button.textContent=busy?"Сохранение…":journal?"Повторить запись истории":"Сохранить";}
+  if(input)input.readOnly=busy||!!journal||!canEdit();
+}
+function showEditFailure(kind,error){
+ if(error?.code==="warehouse/conflict"){
+  document.getElementById(kind+"ConflictValue").value=error.currentValue;
+  document.getElementById(kind+"Conflict").hidden=false;
+  editFeedback(kind,"Данные изменились у другого сотрудника. Сравните версии ниже; ваш текст остался в поле.","error");
+ }else{
+  const denied=String(error?.code||"").toLowerCase().includes("permission");
+  editFeedback(kind,denied?"Нет разрешения на запись. Ваш текст остался в форме.":"Не удалось сохранить. Проверьте соединение и повторите; ваш текст остался в форме.","error");
+ }
+ setSync("Ошибка сохранения · изменения остались в форме","err");
+}
+function cacheSavedWarehouse(){try{setLocal();}catch(error){console.warn("Локальная копия недоступна:",error);}}
 function openModal(s,l,n){
+ if(cellSavePending){showAppToast("Дождитесь завершения сохранения ячейки.");return;}
  clearMapTarget();
  current={s,l,n};document.getElementById("addr").textContent=address(s,l,n);
- document.getElementById("content").value=data[s][l][n]||"";
- renderItemMeta(address(s,l,n),data[s][l][n]||"");
+  const journal=cellPendingJournals.get(address(s,l,n));
+  cellEditBaseline=journal?journal.value:String(data[s][l][n]||"");
+ document.getElementById("content").value=cellEditBaseline;
+ document.getElementById("cellConflict").hidden=true;
+  editFeedback("cell",journal?"Содержимое уже сохранено. Повторите запись истории и дат добавления.":canEdit()?"Изменения появятся у сотрудников после сохранения.":"Доступен просмотр содержимого ячейки.",journal?"warning":"");
+ setEditBusy("cell",false);
+ renderItemMeta(address(s,l,n),cellEditBaseline);
  document.getElementById("modal").style.display="flex";
  setTimeout(()=>document.getElementById("content").focus(),50);
 }
-function closeModal(){document.getElementById("modal").style.display="none";current=null}
+function closeModal(){
+ if(cellSavePending){showAppToast("Дождитесь завершения сохранения ячейки.");return;}
+ document.getElementById("modal").style.display="none";current=null;
+}
+function reloadCellEdit(){
+ if(!current||cellSavePending)return;
+ if(!confirm("Заменить текст в форме актуальной версией с сервера? Сначала скопируйте свои изменения, если они нужны."))return;
+ cellEditBaseline=document.getElementById("cellConflictValue").value;
+ document.getElementById("content").value=cellEditBaseline;
+ document.getElementById("cellConflict").hidden=true;
+ editFeedback("cell","Загружена актуальная версия. Теперь можно внести свои изменения.");
+}
+
 function moveAllowedShelves(street){
   return String(street)==="S1" ? leftLetters : letters;
 }
@@ -1617,6 +1681,7 @@ function closeMoveModal(){
 }
 
 async function moveSelectedDetail(){
+  if(cellSavePending){showAppToast("Дождитесь завершения сохранения ячейки.");return;}
   if(!canEdit()){
     alert("Режим просмотра: перемещение доступно только владельцу.");
     return;
@@ -1712,113 +1777,121 @@ async function moveSelectedDetail(){
 
 
 async function saveCell(){
-  if(!canEdit()){
-    alert("Режим просмотра: редактирование доступно только владельцу.");
-    return;
+ if(!canEdit()||!current||cellSavePending)return;
+ const target={...current},addr=address(target.s,target.l,target.n);
+ const expected=cellEditBaseline,value=document.getElementById("content").value.trim();
+ let journal=cellPendingJournals.get(addr);
+ cellSavePending=true;setEditBusy("cell",true);editFeedback("cell","Сохраняем ячейку…");
+ let complete=false;
+ try{
+  const ref=rootRef.child("cells/"+target.s+"/"+target.l+"/"+target.n);
+  if(!journal){
+   const plan=WarehouseEdits.planCellEdit({address:addr,previousValue:expected,nextValue:value,metadata:itemMeta,keyForLine:itemKey,now:nowTs()});
+   const updates={...plan.metadataUpdates};
+   for(const event of plan.events){
+    const key=rootRef.child("history").push().key;
+    if(!key)throw new Error("Не удалось подготовить историю.");
+    updates["history/"+key]={...event,email:currentUserEmail(),timestamp:firebase.database.ServerValue.TIMESTAMP};
+   }
+   await WarehouseEdits.saveComparedValue(ref,expected,value);
+   if(String(data[target.s][target.l][target.n]||"")===expected)data[target.s][target.l][target.n]=value;
+   cellEditBaseline=value;
+   journal={value,updates,metadataUpdates:plan.metadataUpdates};
+   cellPendingJournals.set(addr,journal);
   }
-  if(!current)return;
-
-  const addr=address(current.s,current.l,current.n);
-  const oldValue=String(data[current.s][current.l][current.n]||"").trim();
-  const value=document.getElementById("content").value.trim();
-  const changes=recordMetaChanges(addr,oldValue,value);
-  const updates={};
-  updates["cells/"+current.s+"/"+current.l+"/"+current.n]=value;
-  updates["itemMeta"]=itemMeta;
-
-  try{
-    await rootRef.update(updates);
-
-    data[current.s][current.l][current.n]=value;
-    setLocal();
-
-    for(const detail of changes.added){
-      const meta=itemMeta[itemKey(addr,detail)]||{addedAt:nowTs(),updatedAt:null};
-      await writeHistory({
-        type:"add",
-        detail,
-        article:detail,
-        address:addr,
-        addedAt:meta.addedAt
-      });
-    }
-
-    for(const detail of changes.removed){
-      await writeHistory({
-        type:"remove",
-        detail,
-        article:detail,
-        address:addr
-      });
-    }
-
-    if(!changes.added.length && !changes.removed.length && oldValue!==value){
-      const ts=nowTs();
-      for(const line of linesOf(value)){
-        const key=itemKey(addr,line);
-        if(itemMeta[key])itemMeta[key].updatedAt=ts;
-      }
-      await rootRef.child("itemMeta").set(itemMeta);
-      setLocal();
-
-      await writeHistory({
-        type:"edit",
-        detail:"Изменено содержимое ячейки",
-        address:addr,
-        oldValue,
-        newValue:value
-      });
-    }
-
-    render();
-    doSearch();
-    setSync("☁️ Синхронизировано · история записана","ok");
-  }catch(e){
-    console.error(e);
-    setSync("⚠️ Ошибка синхронизации","err");
+  // A retry never writes the cell again, and reuses the original event IDs.
+  // Check the server before replaying metadata belonging to this cell version.
+  const currentValue=String((await ref.get()).val()||""),changed=currentValue!==journal.value;
+  const updates=changed?Object.fromEntries(Object.entries(journal.updates).filter(([path])=>path.startsWith("history/"))):journal.updates;
+  if(Object.keys(updates).length)await rootRef.update(updates);
+  if(!changed)for(const [path,meta] of Object.entries(journal.metadataUpdates)){
+   const key=path.slice("itemMeta/".length);if(meta===null)delete itemMeta[key];else itemMeta[key]=meta;
   }
-  closeModal();
+  cellPendingJournals.delete(addr);
+  if(String(data[target.s][target.l][target.n]||"")===journal.value)data[target.s][target.l][target.n]=currentValue;
+  cacheSavedWarehouse();render();doSearch();
+  complete=!changed;
+  if(changed){
+   document.getElementById("cellConflictValue").value=currentValue;document.getElementById("cellConflict").hidden=false;
+   editFeedback("cell","История сохранена. Ячейку уже изменил другой сотрудник: даты не перезаписаны. Сравните версии ниже.","warning");
+   setSync("История записана · ячейка уже изменена другим сотрудником","err");
+  }else{setSync("Синхронизировано · история записана","ok");showAppToast("Ячейка "+addr+" сохранена");}
+ }catch(error){
+  console.error("Ошибка сохранения ячейки:",error);
+  if(cellPendingJournals.has(addr)){
+   editFeedback("cell","Содержимое ячейки уже сохранено. Повторите запись истории и дат добавления кнопкой ниже.","warning");
+   setSync("Ячейка сохранена · требуется повторная запись истории","err");
+   cacheSavedWarehouse();render();doSearch();
+  }else showEditFailure("cell",error);
+ }
+ finally{cellSavePending=false;setEditBusy("cell",false);}
+ if(complete)closeModal();
 }
 
 
 function openSpecial(type){
+ if(specialSavePending){showAppToast("Дождитесь завершения сохранения.");return;}
  currentSpecial=type;document.getElementById("specialTitle").textContent=type==="resale"?"Перекупной товар":"Брак";
- document.getElementById("specialContent").value=specialData[type]||"";
+  const journal=specialPendingJournals.get(type);
+  specialEditBaseline=journal?journal.value:String(specialData[type]||"");
+ document.getElementById("specialContent").value=specialEditBaseline;
+ document.getElementById("specialConflict").hidden=true;
+  editFeedback("special",journal?"Содержимое уже сохранено. Повторите запись истории.":canEdit()?"Изменения появятся у сотрудников после сохранения.":"Доступен просмотр содержимого.",journal?"warning":"");setEditBusy("special",false);
  document.getElementById("specialModal").style.display="flex";
  setTimeout(()=>document.getElementById("specialContent").focus(),50);
 }
-function closeSpecial(){document.getElementById("specialModal").style.display="none";currentSpecial=null}
+function closeSpecial(){
+ if(specialSavePending){showAppToast("Дождитесь завершения сохранения.");return;}
+ document.getElementById("specialModal").style.display="none";currentSpecial=null;
+}
+function reloadSpecialEdit(){
+ if(!currentSpecial||specialSavePending)return;
+ if(!confirm("Заменить текст в форме актуальной версией с сервера? Сначала скопируйте свои изменения, если они нужны."))return;
+ specialEditBaseline=document.getElementById("specialConflictValue").value;
+ document.getElementById("specialContent").value=specialEditBaseline;
+ document.getElementById("specialConflict").hidden=true;
+ editFeedback("special","Загружена актуальная версия. Теперь можно внести свои изменения.");
+}
 async function saveSpecial(){
-  if(!canEdit()){
-    alert("Режим просмотра: редактирование доступно только владельцу.");
-    return;
+ if(!canEdit()||!currentSpecial||specialSavePending)return;
+ const target=currentSpecial,value=document.getElementById("specialContent").value.trim(),expected=specialEditBaseline;
+ let journal=specialPendingJournals.get(target);
+ specialSavePending=true;setEditBusy("special",true);editFeedback("special","Сохраняем…");
+ let complete=false;
+ try{
+  const ref=rootRef.child("special").child(target);
+  if(!journal){
+   const updates={};
+   if(expected!==value){
+    const key=rootRef.child("history").push().key;
+    if(!key)throw new Error("Не удалось подготовить историю.");
+    updates["history/"+key]={type:"edit",detail:target==="resale"?"Перекупной товар":"Брак",address:target,email:currentUserEmail(),timestamp:firebase.database.ServerValue.TIMESTAMP};
+   }
+   await WarehouseEdits.saveComparedValue(ref,expected,value);
+   if(String(specialData[target]||"")===expected)specialData[target]=value;
+   specialEditBaseline=value;
+   journal={value,updates};specialPendingJournals.set(target,journal);
   }
-  if(!currentSpecial)return;
-
-  const value=document.getElementById("specialContent").value.trim();
-  const oldValue=specialData[currentSpecial]||"";
-  specialData[currentSpecial]=value;
-
-  try{
-    await rootRef.child("special").child(currentSpecial).set(value);
-    setLocal();
-
-    if(oldValue!==value){
-      await writeHistory({
-        type:"edit",
-        detail:currentSpecial==="resale"?"Перекупной товар":"Брак",
-        address:currentSpecial
-      });
-    }
-
-    renderSpecial();
-    doSearch();
-    setSync("☁️ Синхронизировано · история записана","ok");
-  }catch(e){
-    console.error(e);
-    setSync("⚠️ Ошибка синхронизации","err");
+  const currentValue=String((await ref.get()).val()||""),changed=currentValue!==journal.value;
+  if(Object.keys(journal.updates).length)await rootRef.update(journal.updates);
+  specialPendingJournals.delete(target);
+  if(String(specialData[target]||"")===journal.value)specialData[target]=currentValue;
+  complete=!changed;
+  cacheSavedWarehouse();renderSpecial();doSearch();
+  if(complete){setSync("Синхронизировано · история записана","ok");showAppToast("Изменения сохранены");}
+  else{
+   document.getElementById("specialConflictValue").value=currentValue;document.getElementById("specialConflict").hidden=false;
+   editFeedback("special","История сохранена. Содержимое уже изменил другой сотрудник. Сравните версии ниже.","warning");setSync("История записана · содержимое уже изменено другим сотрудником","err");
   }
-  closeSpecial();
+ }catch(error){
+  console.error("Ошибка сохранения:",error);
+  if(specialPendingJournals.has(target)){
+   editFeedback("special","Содержимое уже сохранено. Повторите запись истории кнопкой ниже.","warning");setSync("Содержимое сохранено · требуется повторная запись истории","err");
+   cacheSavedWarehouse();renderSpecial();doSearch();
+  }else showEditFailure("special",error);
+ }
+ finally{specialSavePending=false;setEditBusy("special",false);}
+ if(complete)closeSpecial();
 }
 
 
@@ -2457,16 +2530,17 @@ function searchScore(queryTokens,text){
     const brand=tokenIsBrand(rawToken);
     const part=tokenIsPartType(rawToken);
 
-    if(brand){
-      // Марка должна совпасть строго по названию в этой строке
-      // или по коду марки в её артикуле.
-      if(brandMatchesValue(brand,text)) score+=120;
+    // Part aliases also occur in searchAliases; they are not vehicle brands.
+    if(part){
+      if(partMatchesValue(part,text)) score+=120;
       else return 0;
       continue;
     }
 
-    if(part){
-      if(partMatchesValue(part,text)) score+=120;
+    if(brand){
+      // Марка должна совпасть строго по названию в этой строке
+      // или по коду марки в её артикуле.
+      if(brandMatchesValue(brand,text)) score+=120;
       else return 0;
       continue;
     }
@@ -3306,7 +3380,16 @@ function clampPlanPosition(x,y,mapWidth,mapHeight){
   };
 }
 
+function syncSearchHighlights(found=[]){
+  const matchingCells=new Set(found.filter(x=>!x.special&&!x.unaddressed&&x.s&&x.l&&x.n)
+    .map(x=>`cell-${x.s}-${x.l}-${x.n}`));
+  document.querySelectorAll(".cell").forEach(cell=>{
+    cell.classList.toggle("search-hit",matchingCells.has(cell.id));
+  });
+}
+
 function renderMiniMap(found=[]){
+  syncSearchHighlights(found);
   const root=document.getElementById("planMarkers");
   const legend=document.getElementById("miniMapLegend");
   const plan=document.getElementById("warehousePlan");
@@ -3497,6 +3580,30 @@ function articleResultScore(article,q){
   return 10000;
 }
 
+function findAddressResults(query){
+  const match=String(query||"").trim().match(/^S\s*([1-5])\s*[-,]?\s*([A-HJK])\s*-?\s*(10|[1-9])$/i);
+  if(!match)return [];
+  const s="S"+match[1],l=match[2].toUpperCase(),n=match[3];
+  if(s==="S1"&&!leftLetters.includes(l))return [];
+  const v=String(data[s]?.[l]?.[n]||"");
+  return [{a:address(s,l,n),v,matchedLines:[v||"пусто"],s,l,n,score:11000}];
+}
+
+function articleLineMatchesQuery(line,q){
+  if(normalizeArticleQuery(line).includes(q))return true;
+  // The same article may be stored with spaces: AP MZ 1402 C.
+  const words=normalizeSearchText(line).split(/[^a-z0-9]+/).filter(Boolean);
+  for(let start=0;start<words.length;start++){
+    let combined="";
+    for(let end=start;end<Math.min(words.length,start+5);end++){
+      combined+=words[end];
+      if(combined===q||combined.startsWith(q))return true;
+      if(combined.length>=q.length)break;
+    }
+  }
+  return false;
+}
+
 function findExactArticleResults(query){
   const q=normalizeArticleQuery(query);
   if(!q || !isFullArticleQuery(query)) return [];
@@ -3514,33 +3621,7 @@ function findExactArticleResults(query){
         const lines=v.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
 
         for(const line of lines){
-          const words=normalizeSearchText(line)
-            .split(/[^a-z0-9]+/)
-            .filter(Boolean);
-
-          // Для полного артикула сравниваем компактную строку всей записи.
-          // Это важно, потому что в ячейке артикул может стоять не первым,
-          // а рядом с другими артикулами/описаниями.
-          const compactLine=normalizeArticleQuery(line);
-          let match=compactLine.includes(q);
-
-          // Если артикул разбит пробелами:
-          // AP MZ 1402 C -> APMZ1402C.
-          if(!match){
-            for(let start=0;start<words.length && !match;start++){
-              let combined="";
-              for(let end=start;end<Math.min(words.length,start+5);end++){
-                combined+=words[end];
-                if(combined===q || combined.startsWith(q)){
-                  match=true;
-                  break;
-                }
-                if(combined.length>=q.length) break;
-              }
-            }
-          }
-
-          if(match){
+          if(articleLineMatchesQuery(line,q)){
             results.push({
               a:address("S"+s,l,n),
               v,
@@ -3553,6 +3634,17 @@ function findExactArticleResults(query){
           }
         }
       }
+    }
+  }
+
+  for(const type of ["resale","defect"]){
+    for(const line of linesOf(specialData[type])){
+      if(!articleLineMatchesQuery(line,q))continue;
+      results.push({
+        a:type==="resale"?"Перекупной товар":"Брак",
+        v:line,matchedLines:[line],special:type,
+        score:articleResultScore(splitExportLine(line).article,q)
+      });
     }
   }
 
@@ -3572,6 +3664,22 @@ function findExactArticleResults(query){
   return results.sort((a,b)=>b.score-a.score);
 }
 
+function searchResultMarkup(x){
+  const action=x.unaddressed
+    ? "openUnaddressedModal(document.getElementById('search').value)"
+    : x.special ? `openSpecial('${x.special}')` : `openModal('${x.s}','${x.l}','${x.n}')`;
+  const label=x.unaddressed?"Открыть детали без адреса":x.special?`Открыть ${x.a}`:`Открыть ячейку ${x.a}`;
+  const detail=x.unaddressed?x.v:(x.matchedLines?.length?x.matchedLines.join(" · "):x.v||"пусто");
+  return `<div class="search-result-row" onclick="${action}">
+    <button type="button" class="search-result-info" aria-label="${esc(label)}">
+      <strong>${x.unaddressed?"📦 ":""}${esc(x.a)}</strong>
+      <span class="article">${esc(detail)}</span>
+    </button>
+    ${!x.special&&!x.unaddressed?`<button type="button" class="search-result-map-btn" aria-label="${esc(`Показать ячейку ${x.a} на карте`)}"
+      onclick="event.stopPropagation();showResultOnMap('${x.s}','${x.l}','${x.n}')">🗺️ На карте</button>`:""}
+  </div>`;
+}
+
 function doSearch(){
   const raw=document.getElementById("search").value.trim();
   const out=document.getElementById("results");
@@ -3585,33 +3693,16 @@ function doSearch(){
   const queryTokens=searchTokens(raw);
   const found=[];
 
-  // Полный артикул ищем отдельно и строго.
-  // Если найдено точное совпадение — широкий поиск не запускаем.
-  const exactArticleResults=findExactArticleResults(raw);
+  // A storage address contains letters and digits too; resolve it before SKUs.
+  const addressResults=findAddressResults(raw);
+  const exactArticleResults=addressResults.length?addressResults:findExactArticleResults(raw);
 
   if(exactArticleResults.length){
     found.push(...exactArticleResults);
 
     out.innerHTML=
       `<div class="search-results-head">Найдено: ${found.length}</div>`+
-      found.map(x=>x.unaddressed
-        ? `<div class="search-result-row" onclick="openUnaddressedModal(document.getElementById('search').value)">
-             <div class="search-result-info">
-               <strong>📦 ${esc(x.a)}</strong>
-               <span class="article">${esc(x.v)}</span>
-             </div>
-           </div>`
-        : `<div class="search-result-row" onclick="openModal('${x.s}','${x.l}','${x.n}')">
-             <div class="search-result-info">
-               <strong>${esc(x.a)}</strong>
-               <span class="article">${esc(x.matchedLines[0])}</span>
-             </div>
-             <button class="search-result-map-btn"
-               onclick="event.stopPropagation();showResultOnMap('${x.s}','${x.l}','${x.n}')">
-               🗺️ На карте
-             </button>
-           </div>`
-      ).join("");
+      found.map(searchResultMarkup).join("");
 
     renderMiniMap(found);
     return;
@@ -3685,33 +3776,7 @@ if(!found.length){
 
   out.innerHTML=
     `<div class="search-results-head">Найдено: ${found.length}</div>`+
-    found.map(x=>x.unaddressed
-      ? `<div class="search-result-row" onclick="openUnaddressedModal(document.getElementById('search').value)">
-           <div class="search-result-info">
-             <strong>📦 ${esc(x.a)}</strong>
-             <span class="article">${esc(x.v)}</span>
-           </div>
-         </div>`
-      : x.special
-      ? `<div class="search-result-row" onclick="openSpecial('${x.special}')">
-           <div class="search-result-info">
-             <strong>${esc(x.a)}</strong>
-             <span class="article">${esc(x.v||"пусто")}</span>
-           </div>
-         </div>`
-      : `<div class="search-result-row" onclick="openModal('${x.s}','${x.l}','${x.n}')">
-           <div class="search-result-info">
-             <strong>${esc(x.a)}</strong>
-             <span class="article">${esc(
-               x.matchedLines?.length ? x.matchedLines.join(" · ") : (x.v||"пусто")
-             )}</span>
-           </div>
-           <button class="search-result-map-btn"
-             onclick="event.stopPropagation();showResultOnMap('${x.s}','${x.l}','${x.n}')">
-             🗺️ На карте
-           </button>
-         </div>`
-    ).join("");
+    found.map(searchResultMarkup).join("");
 
   renderMiniMap(found);
 }
@@ -3737,12 +3802,8 @@ if(articleFromUrl){
 // Ручная прокрутка пользователя при этом не блокируется.
 let searchRenderTimer=null;
 searchInput.addEventListener("input",()=>{
-  const query=normalizeSearchText(searchInput.value);
-  // Подсветка ячеек выполняется без полной перерисовки карты при каждом символе.
-  document.querySelectorAll(".cell").forEach(cell=>{
-    const hit=!!query&&cell.dataset.searchText.includes(query);
-    cell.classList.toggle("search-hit",hit);
-  });
+  // Recompute highlights from the same results as the list and plan markers.
+  syncSearchHighlights([]);
   clearTimeout(searchRenderTimer);
   searchRenderTimer=setTimeout(doSearch,180);
 });
