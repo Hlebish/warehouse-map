@@ -9,3 +9,7 @@ firebase deploy --only database
 ```
 
 Keep the editor email list in `database.rules.json` aligned with `EDITOR_EMAILS` in `index.html`.
+
+## 3D shelf layout
+
+`warehouse3d/layout` stores only the shared visual shelf assignments as a JSON string, separate from inventory. The same authorized editors can publish it; authenticated warehouse users can read it. Deploy the reviewed rules before publishing a layout. No inventory data is migrated or modified.

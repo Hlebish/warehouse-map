@@ -34,6 +34,13 @@
           ".write": "auth != null && (auth.token.email == 'glebur172@gmail.com' || auth.token.email == 'mashakashner2002@gmail.com' || auth.token.email == 'motroyl@gmail.com' || auth.token.email == 'hlebish7@gmail.com')"
         }
       }
+    },
+    "warehouse3d": {
+      "layout": {
+        ".read": "auth != null && auth.uid != 'warehouse-map-reader'",
+        ".write": "auth != null && (auth.token.email == 'glebur172@gmail.com' || auth.token.email == 'mashakashner2002@gmail.com' || auth.token.email == 'motroyl@gmail.com' || auth.token.email == 'hlebish7@gmail.com')",
+        ".validate": "newData.isString() && newData.val().length <= 100000"
+      }
     }
   }
 }
